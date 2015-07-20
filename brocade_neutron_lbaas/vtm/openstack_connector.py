@@ -697,7 +697,7 @@ class OpenStackInterface(object):
             for server in cfg.CONF.lbaas_settings.admin_servers
         })
         if cfg.CONF.vtm_settings.gui_access is True:
-            replay_data['monitor_user'] = "tenant %s" % "admin"
+            replay_data['monitor_user'] = "monitor %s" % "password"
         else:
             replay_data.update({
                 "access": " ".join(list(set([

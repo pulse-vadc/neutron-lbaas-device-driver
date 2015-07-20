@@ -36,7 +36,7 @@ lbaas_setting_opts = [
     cfg.StrOpt('deployment_model', help=_(
                'SHARED for a shared pool of vTMs. '
                'PER_TENANT for deploying private vTM instance per tenant. '
-               'PER_TENANT for deploying private vTM instance per loadbalancer'
+               'PER_LB for deploying private vTM instance per loadbalancer'
                )),
     cfg.StrOpt('flavor_id',
                help=_('ID of flavor to use for vTM instance')),
