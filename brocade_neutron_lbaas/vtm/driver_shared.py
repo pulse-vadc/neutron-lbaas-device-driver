@@ -314,19 +314,12 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
 
     def _get_vtm(self):
         for _ in xrange(3):
-            LOG.error("\nAttempting to get vTM")
             for vtm in self.vtms:
-                LOG.error("\nvTM: %s" % vtm)
                 try:
                     if not vtm.test_connectivity():
                         raise Exception("")
-                    LOG.error("\nSucceeded!")
                     return vtm
                 except:
-                    LOG.error("\nFailed")
-                    #pass
-            
-            LOG.error("\nNap time")
+                    pass
             sleep(3)
-        LOG.error("\nEXCEPTION!!!!")
         raise Exception("Could not contact any vTMs in cluster")
