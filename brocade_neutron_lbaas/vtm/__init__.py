@@ -19,8 +19,7 @@
 
 from oslo.config import cfg
 from oslo_log import log as logging
-from neutron_lbaas.drivers.brocade.brocade_neutron_lbaas \
-    import check_required_settings
+from brocade_neutron_lbaas import check_required_settings
 
 LOG = logging.getLogger(__name__)
 
