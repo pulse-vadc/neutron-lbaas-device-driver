@@ -80,7 +80,7 @@ question_chain = {
         Question("Which Brocade product do you wish to use?", "lbaas_settings",
                  "product", options=[
                      {"name": "vTM", "value": "VTM",
-                      "next_link": "vtm_model"}
+                      "next_link": "vtm_model"}])
     ],
     "vtm_model": [
         Question("What deployment model are you using?", "lbaas_settings",
@@ -102,7 +102,7 @@ question_chain = {
                  "IDs that represent the interfaces for each vTM on which "
                  "VIPs will listen:", "lbaas_settings", "ports"),
         Question("How many passive Traffic IP Group members should there be?",
-                 "lbaas_settings", "passive_vtms",
+                 "lbaas_settings", "passive_vtms", var_type=int,
                  next_link="vtm_all_vtmsettings")
     ],
     "vtm_private": [
@@ -218,7 +218,6 @@ def format_config(config_data):
 
 
 def execute_question_chain(index):
-    config_data = {}
     for question in question_chain[index]:
         answer = question.ask()
         if answer.value is not None:
@@ -231,11 +230,12 @@ def execute_question_chain(index):
                     answer.value
         if answer.next_link is not None and answer.next_link != index:
             execute_question_chain(answer.next_link)
-    return config_data
+    #return config_data
 
 
 if __name__ == "__main__":
-    config_data = execute_question_chain("start")
+    config_data = {}
+    execute_question_chain("start")
     config_text = format_config(config_data)
     try:
         with open(sys.argv[1], "w") as config_file:
