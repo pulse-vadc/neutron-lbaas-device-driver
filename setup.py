@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+
 from distutils.core import setup
 
 setup(name="brocade_neutron_lbaas",
@@ -6,7 +7,7 @@ setup(name="brocade_neutron_lbaas",
       author_email="mgeldert@brocade.com",
       description="Brocade vADC OpenStack Neutron LBaaS Device Driver",
       long_description=open("README.md").read(),
-      version="0.9b",
+      version="kilo/1.0",
       url="http://www.brocade.com",
       packages=["brocade_neutron_lbaas", "brocade_neutron_lbaas.vtm"],
       scripts=["scripts/brocade_lbaas_config_generator"],
