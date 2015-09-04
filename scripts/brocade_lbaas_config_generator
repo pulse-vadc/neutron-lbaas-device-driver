@@ -64,7 +64,7 @@ class Question(object):
                     while ans == "":
                         if self.masked:
                             ans = getpass("Input (hidden): ")
-                        else;:
+                        else:
                             ans = raw_input("Input: ")
                         if ans == "":
                             print "This setting has no default; " + \
