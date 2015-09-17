@@ -39,6 +39,8 @@ lbaas_setting_opts = [
                )),
     cfg.StrOpt('flavor_id',
                help=_('ID of flavor to use for vTM instance')),
+    cfg.BoolOpt('https_offload', default=True,
+                help=_('Enable HTTPS termination')),
     cfg.StrOpt('image_id',
                help=_('Glance ID of vTM image file to provision')),
     cfg.StrOpt('management_mode', default='FLOATING_IP',

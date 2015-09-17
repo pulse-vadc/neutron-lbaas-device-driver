@@ -138,7 +138,7 @@ question_chain = {
     "vtm_private_mgmtnet": [
         Question("What is the Neutron ID of the management network?",
                  "lbaas_settings", "management_network",
-                 next_link="vtm_private_dnssettings")
+                 next_link="vtm_private_sdsettings")
     ],
     "vtm_private_flip": [
         Question("What is the Neutron ID of the network on which to raise "
@@ -161,8 +161,7 @@ question_chain = {
                  "services_director_settings", "version_resource"),
         Question("Which Services Director FLA license resource should each vTM use?",
                  "services_director_settings", "fla_license",
-                 default="universal_v3")
-                 next_link="vtm_private_vtmsettings")
+                 default="universal_v3", next_link="vtm_private_vtmsettings")
     ],
     "vtm_private_vtmsettings": [
         Question("Give tenants read-only access to the vTM GUI?",
@@ -176,6 +175,11 @@ question_chain = {
                  next_link="vtm_all_vtmsettings"),
     ],
     "vtm_all_vtmsettings": [
+        Question("Should HTTPS off-load be supported? (Select No if Barbican "
+                 "is not available)?",
+                 "lbaas_settings", "https_offload", options=[
+                     {"name": "Yes", "value": True, "next_link": None},
+                     {"name": "No", "value": False, "next_link": None}]),
         Question("Which TCP port does the vTM REST API listen on?",
                  "vtm_settings", "rest_port", default="9070",
                  var_type=int, next_link="vtm_all_oscredentials"),

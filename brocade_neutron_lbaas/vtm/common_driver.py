@@ -79,6 +79,9 @@ class vTMDeviceDriverCommon(object):
         vserver_config['properties']['basic'].update(listen_on_settings)
         # Configure SSL termination...
         if listener.protocol == "TERMINATED_HTTPS":
+            if cfg.CONF.lbaas_settings.https_offload is False:
+                raise Exception("HTTPS termination has been disabled by "
+                                "the administrator")
             # Get cert from Barbican and upload to vTM
             self._upload_certificate(vtm, listener.default_tls_container_id)
             # certificate and initialize the SNI mapping table
