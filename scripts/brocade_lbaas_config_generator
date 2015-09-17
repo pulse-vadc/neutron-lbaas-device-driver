@@ -128,8 +128,6 @@ question_chain = {
                  "lbaas_settings", "image_id"),
         Question("What is the Nova ID of the flavor to use for vTMs?",
                  "lbaas_settings", "flavor_id"),
-        Question("What domain name should be used for vTM instances?",
-                 "lbaas_settings", "vtm_domain"),
         Question("Which management mode should be used?", "lbaas_settings",
                  "management_mode", options=[
                      {"name": "Dedicated management network",
@@ -145,23 +143,6 @@ question_chain = {
     "vtm_private_flip": [
         Question("What is the Neutron ID of the network on which to raise "
                  "the floating IPs?", "lbaas_settings", "management_network",
-                 next_link="vtm_private_dnssettings")
-    ],
-    "vtm_private_dnssettings": [
-        Question("Which name resolution plugin should be used?",
-                 "lbaas_settings", "name_resolution_plugin", options=[
-                     {"name": "None", "value": "noop",
-                      "next_link": "vtm_private_sdsettings"},
-                     {"name": "/etc/hosts", "value": "hosts",
-                      "next_link": "vtm_private_sdsettings"},
-                     {"name": "Designate", "value": "designate",
-                      "next_link": "vtm_private_designatesettings"}]),
-    ],
-    "vtm_private_designatesettings": [
-        Question("What is the endpoint of the Designate API service?",
-                 "lbaas_designate_settings", "endpoint"),
-        Question("What is the Designate ID of the zone to use?",
-                 "lbaas_designate_settings", "zone",
                  next_link="vtm_private_sdsettings")
     ],
     "vtm_private_sdsettings": [
@@ -170,11 +151,8 @@ question_chain = {
         Question("What is the password of the Services Director admin user?",
                  "services_director_settings", "password", masked=True),
         Question("Which port does the Services Director REST API listen on?",
-                 "services_director_settings", "rest_port", default="8000", 
+                 "services_director_settings", "rest_port", default="8100", 
                  var_type=int),
-        #Question("Which Services Director API version should be used?",
-        #         "services_director_settings", "api_version", default="1.5",
-        #         var_type=float),
         Question("How much bandwidth (Mbps) should each vTM be allocated?",
                  "services_director_settings", "bandwidth", var_type=int),
         Question("Which Services Director feature pack should each vTM use?",
@@ -182,7 +160,8 @@ question_chain = {
         Question("Which Services Director version resource should each vTM use?",
                  "services_director_settings", "version_resource"),
         Question("Which Services Director FLA license resource should each vTM use?",
-                 "services_direcotr_settings", "fla_license",
+                 "services_director_settings", "fla_license",
+                 default="universal_v3")
                  next_link="vtm_private_vtmsettings")
     ],
     "vtm_private_vtmsettings": [
@@ -200,9 +179,6 @@ question_chain = {
         Question("Which TCP port does the vTM REST API listen on?",
                  "vtm_settings", "rest_port", default="9070",
                  var_type=int, next_link="vtm_all_oscredentials"),
-        #Question("Which vTM API version should be used?",
-        #         "vtm_settings", "api_version", default="3.3",
-        #         var_type=float, next_link="vtm_all_oscredentials")
     ],
     "vtm_all_oscredentials": [
         Question("What is the username for the OpenStack admin user?",

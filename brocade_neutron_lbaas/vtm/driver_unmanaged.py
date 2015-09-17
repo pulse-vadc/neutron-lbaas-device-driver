@@ -22,7 +22,6 @@ from neutron_lbaas.common.exceptions import LbaasException
 from openstack_connector import OpenStackInterface
 from oslo.config import cfg
 from oslo_log import log as logging
-from resolver import Resolver
 from services_director import ServicesDirector
 from vtm import vTM
 from time import sleep
@@ -55,10 +54,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             for server in services_director_list
         ]
         self.openstack_connector = OpenStackInterface()
-        self.resolver = Resolver(
-            cfg.CONF.lbaas_settings.name_resolution_plugin
-        )
-        LOG.error(_("\nBrocade vTM LBaaS module initialized."))
+        LOG.debug(_("\nBrocade vTM LBaaS module initialized."))
 
     def create_loadbalancer(self, lb):
         """
@@ -369,8 +365,6 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
     def _spawn_vtm(self, hostname, lb):
         """
         Creates a vTM instance as a Nova VM.
-        A name resolution record is added so the vTM's hostname
-        is resolvable.
         The VM is registered with Services Director to provide licensing and
         configuration proxying.
         """
@@ -384,16 +378,14 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         LOG.info(
             _("\nvTM %s created for tenant %s" % (hostname, lb.tenant_id))
         )
-        self.resolver.add_record(hostname, mgmt_ip)
-        LOG.debug(_("\nName resolution entry for %s created" % hostname))
         instance = services_director.unmanaged_instance.create(
             lb.id,
             tag=hostname,
             admin_username=cfg.CONF.vtm_settings.username,
             admin_password=password,
-            management_address=hostname,
+            management_address=mgmt_ip,
             rest_address="%s:%s" % (
-                hostname, cfg.CONF.vtm_settings.rest_port
+                mgmt_ip, cfg.CONF.vtm_settings.rest_port
             ),
             owner=lb.tenant_id,
             bandwidth=cfg.CONF.services_director_settings.bandwidth,
@@ -407,16 +399,16 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             hostname,
             cfg.CONF.vtm_settings.api_version
         )
-        sa = vTM(
+        vtm = vTM(
             url,
             cfg.CONF.services_director_settings.username,
             cfg.CONF.services_director_settings.password
         )
         for counter in xrange(15):
             try:
-                if not sa.test_connectivity():
+                if not vtm.test_connectivity():
                     raise Exception("")
-                return sa
+                return vtm
             except Exception:
                 pass
             sleep(10)
@@ -427,14 +419,11 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
     def _destroy_vtm(self, hostname, lb):
         """
         Destroys the vTM Nova VM.
-        The related name resolution record is deleted.
         The vTM is "deleted" in Services Director (this flags the instance
         rather than actually deleting it from the database).
         """
         self.openstack_connector.destroy_vtm(hostname, lb)
         LOG.debug(_("\nvTM %s destroyed" % hostname))
-        self.resolver.delete_record(hostname)
-        LOG.debug(_("\nName resolution entry for %s deleted" % hostname))
         services_director = self._get_services_director()
         services_director.unmanaged_instance.delete(hostname)
         LOG.debug(_("\nInstance %s deactivated" % hostname))

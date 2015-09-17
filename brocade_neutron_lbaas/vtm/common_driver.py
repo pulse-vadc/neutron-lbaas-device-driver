@@ -412,4 +412,4 @@ class vTMDeviceDriverCommon(object):
         return cert
 
     def _get_hostname(self, id):
-        return "vtm-%s.%s" % (id, cfg.CONF.lbaas_settings.vtm_domain)
+        return "vtm-%s" % (id)

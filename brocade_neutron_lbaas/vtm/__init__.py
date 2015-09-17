@@ -45,8 +45,6 @@ lbaas_setting_opts = [
                help=_('Whether to use floating IP or dedicated mgmt network')),
     cfg.StrOpt('management_network',
                help=_('Neutron ID of network for admin traffic')),
-    cfg.StrOpt('name_resolution_plugin', default='hosts',
-               help=_('Plugin to manipulate name resolution mechanism')),
     cfg.ListOpt('neutron_servers', default=None,
                help=_('List of Neutron Server hostnames')),
     cfg.IntOpt('passive_vtms', default=1,
@@ -56,12 +54,10 @@ lbaas_setting_opts = [
     cfg.StrOpt('openstack_password',
                help=_('Password of OpenStack admin account')),
     cfg.StrOpt('openstack_username', default="admin",
-               help=_('Username of OpenStack admin account')),
-    cfg.StrOpt('vtm_domain',
-               help=_('Domain to append to hostname to get FQDN'))
+               help=_('Username of OpenStack admin account'))
 ]
 services_director_setting_opts = [
-    cfg.StrOpt('api_version', default="1.5",
+    cfg.StrOpt('api_version', default="2.0",
                help=_('Version of Services Director REST API to use')),
     cfg.IntOpt('bandwidth',
                help=_('Bandwidth allowance for vTM instances')),
@@ -71,7 +67,7 @@ services_director_setting_opts = [
                help=_('FLA license resource to apply to vTM instances')),
     cfg.StrOpt('password',
                help=_('Password of Services Director admin account')),
-    cfg.IntOpt('rest_port', default=8000,
+    cfg.IntOpt('rest_port', default=8100,
                help=_('TCP port that the Services Director REST daemon '
                'listens on')),
     cfg.StrOpt('username', default="admin",
@@ -142,12 +138,9 @@ else:
                 "network. For FLOATING_IP mode, the Neutron UUID of the "
                 "network on which to raise the floating IPs.",
             "openstack_password":
-                "Password of OpenStack admin user",
-            "vtm_domain":
-                "Domain to add to vTM instance hostnames to make FQDN"
+                "Password of OpenStack admin user"
         },
         "services_director_settings": {
-            "api_version": "Version of the Services Director REST API to use",
             "bandwidth":
                 "Amount of bandwidth to allocate to each vTM instance",
             "feature_pack":
@@ -161,7 +154,6 @@ else:
                 "for each vTM"
         },
         "vtm_settings": {
-            "api_version": "Version of the vTM REST API to use",
             "nameservers": "List of nameservers for vTM instances to use"
         }
     })
