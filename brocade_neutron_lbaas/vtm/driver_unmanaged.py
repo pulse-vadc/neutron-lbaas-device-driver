@@ -369,12 +369,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         configuration proxying.
         """
         services_director = self._get_services_director()
-        license_key = services_director.license.get_text(
-            cfg.CONF.services_director_settings.fla_license
-        )
-        (mgmt_ip, password) = self.openstack_connector.create_vtm(
-            hostname, lb, license_key
-        )
+        (mgmt_ip, password) = self.openstack_connector.create_vtm(hostname, lb)
         LOG.info(
             _("\nvTM %s created for tenant %s" % (hostname, lb.tenant_id))
         )

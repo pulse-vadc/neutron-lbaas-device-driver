@@ -49,8 +49,6 @@ def main():
     call("%s/stop-zeus" % ZEUSHOME)
     with open("/root/config_data") as config_drive:
         user_data = json.loads(config_drive.read())
-    with open("%s/zxtm/conf/licensekeys/license.txt" % ZEUSHOME, "w") as lk:
-        lk.write(user_data['license_key'])
     global_config = ConfigFile('global.cfg', "%s/zxtm" % ZEUSHOME)
     settings_config = ConfigFile('settings.cfg', "%s/zxtm/conf" % ZEUSHOME)
     security_config = ConfigFile('security', "%s/zxtm/conf" % ZEUSHOME)
