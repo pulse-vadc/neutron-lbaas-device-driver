@@ -112,7 +112,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             LOG.debug(_("\nupdate_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in update_loadbalancer(%s): %s" % (lb.id, e)))
-            LOG.trace(_("\n%s" % format_exc()))
+            LOG.error(_("\n%s" % format_exc()))
             raise LbaasException()
 
     def delete_loadbalancer(self, lb):
@@ -149,7 +149,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             LOG.debug(_("\ndelete_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in delete_loadbalancer(%s): %s" % (lb.id, e)))
-            LOG.trace(_("\n%s" % format_exc()))
+            LOG.error(_("\n%s" % format_exc()))
             raise LbaasException()
 
 #############
@@ -186,7 +186,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             LOG.error(
                 _("\nError in update_listener(%s): %s" % (listener.id, e))
             )
-            LOG.trace(_("\n%s" % format_exc()))
+            LOG.error(_("\n%s" % format_exc()))
             raise LbaasException()
 
     def delete_listener(self, listener):
@@ -209,7 +209,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             LOG.error(
                 _("\nError in delete_listener(%s): %s" % (listener.id, e))
             )
-            LOG.trace(_("\n%s" % format_exc()))
+            LOG.error(_("\n%s" % format_exc()))
             raise LbaasException()
 
 #########
@@ -236,7 +236,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             LOG.debug(_("\nupdate_pool(%s): completed!" % pool.id))
         except Exception as e:
             LOG.error(_("\nError in update_pool(%s): %s" % (pool.id, e)))
-            LOG.trace(_("\n%s" % format_exc()))
+            LOG.error(_("\n%s" % format_exc()))
             raise LbaasException()
 
     def delete_pool(self, pool):
@@ -257,7 +257,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             LOG.debug(_("\ndelete_pool(%s): completed!" % pool.id))
         except Exception as e:
             LOG.error(_("\nError in delete_pool(%s): %s" % (pool.id, e)))
-            LOG.trace(_("\n%s" % format_exc()))
+            LOG.error(_("\n%s" % format_exc()))
             raise LbaasException()
 
 ############
@@ -280,7 +280,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             LOG.error(
                 _("\nError in update_healthmonitor(%s): %s" % (monitor.id, e))
             )
-            LOG.trace(_("\n%s" % format_exc()))
+            LOG.error(_("\n%s" % format_exc()))
             raise LbaasException()
 
     def delete_healthmonitor(self, monitor):
@@ -299,7 +299,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             LOG.error(
                 _("\nError in delete_healthmonitor(%s): %s" % (monitor.id, e))
             )
-            LOG.trace(_("\n%s" % format_exc()))
+            LOG.error(_("\n%s" % format_exc()))
             raise LbaasException()
 
 #########
@@ -321,7 +321,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 return super(BrocadeAdxDeviceDriverV2, self).stats(vtm)
         except Exception as e:
             LOG.error(_("\nError in stats(%s): %s" % (loadbalancer.id, e)))
-            LOG.trace(_("\n%s" % format_exc()))
+            LOG.error(_("\n%s" % format_exc()))
             raise LbaasException()
 
 ########

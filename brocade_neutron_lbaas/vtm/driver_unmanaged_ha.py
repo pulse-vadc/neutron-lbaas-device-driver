@@ -79,7 +79,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
             LOG.debug(_("\nupdate_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in update_loadbalancer(%s): %s" % (lb.id, e)))
-            LOG.trace(_("\n%s" % format_exc()))
+            LOG.error(_("\n%s" % format_exc()))
             raise LbaasException()
 
     def delete_loadbalancer(self, lb):
@@ -117,7 +117,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
             LOG.debug(_("\ndelete_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in delete_loadbalancer(%s): %s" % (lb.id, e)))
-            LOG.trace(_("\n%s" % format_exc()))
+            LOG.error(_("\n%s" % format_exc()))
             raise LbaasException()
 
 ########
