@@ -689,10 +689,6 @@ class OpenStackInterface(object):
             "appliance!nameservers":
                 " ".join(cfg.CONF.vtm_settings.nameservers)
         }
-        replay_data.update({
-            "appliance!hosts!%s" % server: socket.gethostbyname(server)
-            for server in cfg.CONF.lbaas_settings.admin_servers
-        })
         if cfg.CONF.vtm_settings.gui_access is True:
             replay_data['monitor_user'] = "monitor %s" % "password"
         else:
