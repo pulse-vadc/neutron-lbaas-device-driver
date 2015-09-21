@@ -153,8 +153,6 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
     def _spawn_vtm(self, hostnames, lb):
         """
         Creates a vTM HA cluster as Nova VM instances.
-        Name resolution records are added so the vTMs' hostnames
-        are resolvable.
         The VMs are registered with Services Director to provide licensing and
         configuration proxying.
         """
@@ -164,11 +162,6 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
             hostnames, lb.tenant_id
         )))
         for member in cluster['nodes']:
-            self.resolver.add_record(member['hostname'], member['mgmt_ip'])
-            LOG.debug(
-                _("\nAdded name resolution record for %s -> %s" % (
-                    member['hostname'], member['mgmt_ip']
-                )))
             instance = services_director.unmanaged_instance.create(
                 "%s-%s" % (lb.id, member['hostname']),
                 tag=member['hostname'],
@@ -217,7 +210,6 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
     def _destroy_vtm(self, hostnames, lb):
         """
         Destroys the vTM Nova VM.
-        The related name resolution record is deleted.
         The vTM is "deleted" in Services Director (this flags the instance
         rather than actually deleting it from the database).
         """
@@ -226,10 +218,6 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
             try:
                 self.openstack_connector.destroy_vtm(hostname, lb)
                 LOG.debug(_("\nvTM %s destroyed" % hostname))
-                self.resolver.delete_record(hostname)
-                LOG.debug(
-                    _("\nName resolution entry for %s deleted" % hostname)
-                )
                 services_director.unmanaged_instance.delete(hostname)
                 LOG.debug(_("\nInstance %s deactivated" % hostname))
             except Exception as e:
