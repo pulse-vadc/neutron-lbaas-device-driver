@@ -167,16 +167,16 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                 tag=member['hostname'],
                 admin_username=cfg.CONF.vtm_settings.username,
                 admin_password=cluster['password'],
-                management_address=member['hostname'],
+                management_address=member['mgmt_ip'],
                 rest_address="%s:%s" % (
-                    member['hostname'], cfg.CONF.vtm_settings.rest_port
+                    member['mgmt_ip'], cfg.CONF.vtm_settings.rest_port
                 ),
                 owner=lb.tenant_id,
                 bandwidth=cfg.CONF.services_director_settings.bandwidth,
                 stm_version=cfg.CONF.services_director_settings.
-                version_resource,
+                            version_resource,
                 stm_feature_pack=cfg.CONF.services_director_settings.
-                feature_pack
+                                 feature_pack
             )
             instance.start()
             LOG.debug(
