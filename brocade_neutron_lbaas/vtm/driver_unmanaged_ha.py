@@ -125,10 +125,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
 ########
 
     def _get_hostname(self, id):
-        return (
-            "vtm-%s-pri.%s" % (id, cfg.CONF.lbaas_settings.vtm_domain),
-            "vtm-%s-sec.%s" % (id, cfg.CONF.lbaas_settings.vtm_domain)
-        )
+        return ("vtm-%s-pri" % (id), "vtm-%s-sec" % (id))
 
     def _get_vtm(self, hostnames):
         services_director = self._get_services_director()
