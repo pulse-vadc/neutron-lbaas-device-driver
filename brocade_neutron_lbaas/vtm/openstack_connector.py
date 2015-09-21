@@ -282,7 +282,8 @@ class OpenStackInterface(object):
             data_port = neutron.create_port(
                 {"port": {
                     "network_id": network_id,
-                    "tenant_id": lb.tenant_id
+                    "tenant_id": lb.tenant_id,
+                    "name": "data-%s" % hostname
                 }}
             )['port']
             if cfg.CONF.lbaas_settings.deployment_model == "PER_LOADBALANCER":
