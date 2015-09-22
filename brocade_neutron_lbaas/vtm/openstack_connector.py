@@ -40,12 +40,20 @@ class OpenStackInterface(object):
         keystone = self.get_keystone_client()
         neutron_service = keystone.services.find(name="neutron")
         nova_service = keystone.services.find(name="nova")
-        self.neutron_endpoint = keystone.endpoints.find(
-            interface="admin", service_id=neutron_service.id
-        ).url
-        self.nova_endpoint = keystone.endpoints.find(
-            interface="admin", service_id=nova_service.id
-        ).url
+        if cfg.CONF.lbaas_settings.keystone_version == "2":
+            self.neutron_endpoint = keystone.endpoints.find(
+                service_id=neutron_service.id
+            ).adminurl
+            self.nova_endpoint = keystone.endpoints.find(
+                service_id=nova_service.id
+            ).adminurl
+        else:
+            self.neutron_endpoint = keystone.endpoints.find(
+                interface="admin", service_id=neutron_service.id
+            ).url
+            self.nova_endpoint = keystone.endpoints.find(
+                interface="admin", service_id=nova_service.id
+            ).url
 
     def create_vtm(self, hostname, lb):
         """
