@@ -295,8 +295,9 @@ class ServicesDirector(ProductInstance):
         }
     }
 
-    def __init__(self, base_url, username, password, initialize_config=True):
+    def __init__(self, base_url, username, password, initialize_config=True,
+                 connectivity_test_url=None):
         super(ServicesDirector, self).__init__(
             base_url, username, password, ServicesDirectorConfigObjectList,
-            initialize_config
+            initialize_config, connectivity_test_url
         )
