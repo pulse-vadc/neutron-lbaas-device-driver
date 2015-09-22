@@ -630,10 +630,8 @@ class OpenStackInterface(object):
     def get_keystone_client(self, tenant_id=None, tenant_name=None):
         if cfg.CONF.lbaas_settings.keystone_version == "2":
             from keystoneclient.v2_0 import client as keystone_client
-            url_path = "/v2.0"
         else:
             from keystoneclient.v3 import client as keystone_client
-            url_path = "/v3"
         param = {}
         if tenant_id:
             param['tenant_id'] = tenant_id
@@ -644,7 +642,7 @@ class OpenStackInterface(object):
         return keystone_client.Client(
             username=self.admin_username,
             password=self.admin_password,
-            auth_url="%s%s" % (cfg.CONF.keystone_authtoken.auth_uri, url_path),
+            auth_url=cfg.CONF.keystone_authtoken.auth_uri,
             **param
         )
 
