@@ -171,6 +171,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                 rest_address="%s:%s" % (
                     member['mgmt_ip'], cfg.CONF.vtm_settings.rest_port
                 ),
+                rest_enabled=False,
                 owner=lb.tenant_id,
                 bandwidth=cfg.CONF.services_director_settings.bandwidth,
                 stm_version=cfg.CONF.services_director_settings.
@@ -184,18 +185,18 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                     member['hostname']
                 )))
             url = "%s/instance/%s/tm/%s" % (
-                services_director.instance_url,
+                services_director.connectivity_test_url,
                 member['hostname'],
                 cfg.CONF.vtm_settings.api_version
             )
-            sa = vTM(
+            vtm = vTM(
                 url,
                 cfg.CONF.services_director_settings.username,
                 cfg.CONF.services_director_settings.password
             )
             for counter in xrange(15):
                 try:
-                    if not sa.test_connectivity():
+                    if not vtm.test_connectivity():
                         raise Exception("")
                     break
                 except Exception:
@@ -206,6 +207,9 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                             member['hostname']
                         ))
                 sleep(10)
+            LOG.error("\n\n\nEnabling REST API...\n\n")
+            instance.rest_enabled = True
+            instance.update()
 
     def _destroy_vtm(self, hostnames, lb):
         """

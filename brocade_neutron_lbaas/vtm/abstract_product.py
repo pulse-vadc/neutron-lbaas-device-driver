@@ -280,8 +280,10 @@ class ProductInstance(ConfigObject):
     """
     __metadata__ = ABCMeta
 
-    def __init__(self, url, username, password, list_class, initialize_config):
+    def __init__(self, url, username, password, list_class, initialize_config,
+                 connectivity_test_url=None):
         self.instance_url = url
+        self.connectivity_test_url = connectivity_test_url or url
         # Initialize HTTP connection object
         self.http_session = requests.Session()
         self.http_session.verify = False
@@ -353,7 +355,7 @@ class ProductInstance(ConfigObject):
         return connector
 
     def test_connectivity(self):
-        response = self.http_session.get(self.instance_url)
+        response = self.http_session.get(self.connectivity_test_url)
         if response.status_code == 200:
             return True
         return False

@@ -50,6 +50,10 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 ),
                 cfg.CONF.services_director_settings.username,
                 cfg.CONF.services_director_settings.password,
+                connectivity_test_url="https://%s:%s/api/tmcm/1.5" % (
+                    server,
+                    cfg.CONF.services_director_settings.rest_port
+                )
             )
             for server in services_director_list
         ]
@@ -382,6 +386,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             rest_address="%s:%s" % (
                 mgmt_ip, cfg.CONF.vtm_settings.rest_port
             ),
+            rest_enabled=False,
             owner=lb.tenant_id,
             bandwidth=cfg.CONF.services_director_settings.bandwidth,
             stm_version=cfg.CONF.services_director_settings.version_resource,
@@ -390,7 +395,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         instance.start()
         LOG.debug(_("\nvTM %s registered with Services Director" % hostname))
         url = "%s/instance/%s/tm/%s" % (
-            services_director.instance_url,
+            services_director.connectivity_test_url,
             hostname,
             cfg.CONF.vtm_settings.api_version
         )
@@ -410,6 +415,9 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         raise Exception(
             "vTM instance %s failed to boot... Timed out." % hostname
         )
+        LOG.error("\n\n\nEnabling REST API...\n\n")
+        instance.rest_enabled = True
+        instance.update()
 
     def _destroy_vtm(self, hostname, lb):
         """
