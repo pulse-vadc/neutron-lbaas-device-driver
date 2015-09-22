@@ -330,9 +330,7 @@ class vTMDeviceDriverCommon(object):
             },
             "http": {
                 "path": monitor.url_path,
-                "status_regex": "(%s)" % (
-                    "|".join(monitor.expected_codes.split())
-                )
+                "status_regex": self._codes_to_regex(monitor.expected_codes)
             }
         }}
         # Create/update the vTM health monitor object
@@ -392,6 +390,21 @@ class vTMDeviceDriverCommon(object):
 # MISC #
 ########
 
+    def _codes_to_regex(self, status_codes):
+        return "(%s)" % "|".join(
+            [
+                code.strip() if "-" not in code else "|".join([
+                    str(range_code) for range_code in range(
+                        int(code.split("-")[0]), int(code.split("-")[1]) + 1
+                    )
+                ])
+                for code in status_codes.split(",")
+            ]
+        )
+
+    def _get_hostname(self, id):
+        return "vtm-%s" % (id)
+
     def _upload_certificate(self, vtm, container_id):
         # Get the certificate from Barbican
         cert = certificate_manager.get_cert(
@@ -414,5 +427,3 @@ class vTMDeviceDriverCommon(object):
         )
         return cert
 
-    def _get_hostname(self, id):
-        return "vtm-%s" % (id)
