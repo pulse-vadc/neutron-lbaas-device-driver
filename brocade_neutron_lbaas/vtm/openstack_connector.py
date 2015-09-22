@@ -19,7 +19,6 @@
 
 import base64
 import json
-from keystoneclient.v3 import client as keystone_client
 from neutronclient.neutron import client as neutron_client
 from oslo_log import log as logging
 from oslo.config import cfg
@@ -629,25 +628,23 @@ class OpenStackInterface(object):
         return neutron
 
     def get_keystone_client(self, tenant_id=None, tenant_name=None):
-        keystone_url = "%s://%s:%s/v3" % (
-            #cfg.CONF.keystone_authtoken.auth_protocol,
-            "http",
-            cfg.CONF.keystone_authtoken.auth_host,
-            cfg.CONF.keystone_authtoken.auth_port
-        )
-        params = {
-            "username": self.admin_username,
-            "password": self.admin_password,
-            "auth_url": keystone_url
-        }
+        if cfg.CONF.lbaas_settings.keystone_verion == "2":
+            from keystoneclient.v2_0 import client as keystone_client
+            url_path = "/v2.0"
+        else:
+            from keystoneclient.v3 import client as keystone_client
+            url_path = "/v3"
         if tenant_id:
             params['tenant_id'] = tenant_id
         elif tenant_name:
             params['tenant_name'] = tenant_name
         else:
             params['tenant_name'] = "admin"
-        keystone = keystone_client.Client(**params)
-        return keystone
+        return keystone_client.Client(
+            username=self.admin_username,
+            password=self.admin_password,
+            auth_url="%s%s" % (cfg.CONF.keystone_authtoken.auth_uri, url_path)
+        )
 
     def get_auth_token(self, tenant_id=None, tenant_name=None):
         keystone_client = self.get_keystone_client(tenant_id, tenant_name)

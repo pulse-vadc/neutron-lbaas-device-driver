@@ -188,7 +188,11 @@ question_chain = {
         Question("What is the username for the OpenStack admin user?",
                  "lbaas_settings", "openstack_username", default="admin"),
         Question("What is the password for the OpenStack admin user?",
-                 "lbaas_settings", "openstack_password", masked=True)
+                 "lbaas_settings", "openstack_password", masked=True),
+        Question("Which Keystone version should be used?",
+                 "lbaas_settings", "keystone_version", options=[
+                     {"name": "v2", "value": "2", "next_link": None},
+                     {"name": "v3", "value": "3", "next_link": None}])
     ]
 }
 

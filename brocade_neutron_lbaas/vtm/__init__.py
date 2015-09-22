@@ -39,6 +39,8 @@ lbaas_setting_opts = [
                )),
     cfg.StrOpt('flavor_id',
                help=_('ID of flavor to use for vTM instance')),
+    cfg.StrOpt('keystone_version', default="3",
+               help=_('Version of Keystone API to use')),
     cfg.BoolOpt('https_offload', default=True,
                 help=_('Enable HTTPS termination')),
     cfg.StrOpt('image_id',
