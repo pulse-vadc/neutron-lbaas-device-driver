@@ -546,10 +546,10 @@ class OpenStackInterface(object):
             "config_drive": True
         }}
         try:
+            endpoint = self.nova_endpoint.replace("$(tenant_id)s", tenant_id)
+            endpoint = endpoint.replace("%(tenant_id)s", tenant_id)
             response = requests.post(
-                "%s/servers" % (
-                    self.nova_endpoint.replace("$(tenant_id)s", tenant_id)
-                ),
+                "%s/servers" % endpoint,
                 data=json.dumps(body),
                 headers=headers
             )
@@ -559,11 +559,10 @@ class OpenStackInterface(object):
 
     def get_server(self, tenant_id, server_id):
         token = self.get_auth_token(tenant_id=tenant_id)
+        endpoint = self.nova_endpoint.replace("$(tenant_id)s", tenant_id)
+        endpoint = endpoint.replace("%(tenant_id)s", tenant_id)
         response = requests.get(
-            "%s/servers/%s" % (
-                self.nova_endpoint.replace("$(tenant_id)s", tenant_id),
-                server_id
-            ),
+            "%s/servers/%s" % (nova_endpoint, server_id),
             headers={"X-Auth-Token": token}
         )
         if response.status_code != 200:
@@ -572,11 +571,10 @@ class OpenStackInterface(object):
 
     def lock_server(self, tenant_id, server_id):
         token = self.get_auth_token(tenant_id=tenant_id)
+        endpoint = self.nova_endpoint.replace("$(tenant_id)s", tenant_id)
+        endpoint = endpoint.replace("%(tenant_id)s", tenant_id)
         response = requests.post(
-            "%s/servers/%s/action" % (
-                self.nova_endpoint.replace("$(tenant_id)s", tenant_id),
-                server_id
-            ),
+            "%s/servers/%s/action" % (endpoint, server_id),
             headers={
                 "X-Auth-Token": token,
                 "Content-Type": "application/json"
@@ -603,10 +601,10 @@ class OpenStackInterface(object):
         Gets the Nova ID of a server from its hostname.
         """
         token = self.get_auth_token(tenant_id=tenant_id)
+        endpoint = self.nova_endpoint.replace("$(tenant_id)s", tenant_id)
+        endpoint = endpoint.replace("%(tenant_id)s", tenant_id)
         response = requests.get(
-            "%s/servers" % (
-                self.nova_endpoint.replace("$(tenant_id)s", tenant_id)
-            ),
+            "%s/servers" % endpoint,
             headers={"X-Auth-Token": token}
         )
         for server in response.json()['servers']:
@@ -619,11 +617,10 @@ class OpenStackInterface(object):
         Deletes a Nova instance.
         """
         token = self.get_auth_token(tenant_id=tenant_id)
+        endpoint = self.nova_endpoint.replace("$(tenant_id)s", tenant_id)
+        endpoint = endpoint.replace("%(tenant_id)s", tenant_id)
         requests.delete(
-            "%s/servers/%s" % (
-                self.nova_endpoint.replace("$(tenant_id)s", tenant_id),
-                server_id
-            ),
+            "%s/servers/%s" % (endpoint, server_id),
             headers={"X-Auth-Token": token}
         )
 
