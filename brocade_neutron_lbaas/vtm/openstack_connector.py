@@ -652,7 +652,7 @@ class OpenStackInterface(object):
         return keystone_client.Client(
             username=self.admin_username,
             password=self.admin_password,
-            auth_url="%s%s" % (cfg.CONF.keystone_authtoken.auth_uri, url_path)
+            auth_url="%s%s" % (cfg.CONF.keystone_authtoken.auth_uri, url_path),
             **param
         )
 
