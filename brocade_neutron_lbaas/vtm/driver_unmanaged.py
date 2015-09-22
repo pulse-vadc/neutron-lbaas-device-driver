@@ -415,8 +415,8 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         raise Exception(
             "vTM instance %s failed to boot... Timed out." % hostname
         )
-        LOG.error("\n\n\nEnabling REST API...\n\n")
         instance.rest_enabled = True
+        instance.license_name = cfg.CONF.services_director_settings.fla_license
         instance.update()
 
     def _destroy_vtm(self, hostname, lb):
