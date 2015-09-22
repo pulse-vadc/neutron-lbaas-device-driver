@@ -208,7 +208,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                         ))
                 sleep(10)
             instance.rest_enabled = True
-            instance.license_name = cfg.CONF.services_director_settings.
+            instance.license_name = cfg.CONF.services_director_settings.\
                                     fla_license
             instance.update()
 
