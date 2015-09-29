@@ -46,6 +46,11 @@ class ReplayData(dict):
 def main():
     ZEUSHOME = os.environ.get('ZEUSHOME', '/opt/zeus')
     new_user = None
+    uuid_generate_proc = Popen(
+        ["%s/zxtm/bin/zcli" % ZEUSHOME],
+        stdout=PIPE, stdin=PIPE, stderr=STDOUT
+    )
+    uuid_generate_proc.communicate(input="System.Management.regenerateUUID")[0]
     call("%s/stop-zeus" % ZEUSHOME)
     with open("/root/config_data") as config_drive:
         user_data = json.loads(config_drive.read())
