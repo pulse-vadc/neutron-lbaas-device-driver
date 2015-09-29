@@ -89,9 +89,9 @@ question_chain = {
     "vtm_model": [
         Question("What deployment model are you using?", "lbaas_settings",
                  "deployment_model", options=[
-                     {"name": "Shared Instances", "value": "SHARED",
+                     {"name": "Shared vTM instances", "value": "SHARED",
                       "next_link": "vtm_shared"},
-                     {"name": "Private Instances", "value": None,
+                     {"name": "Private vTM instances for each tenant", "value": None,
                       "next_link": "vtm_private"}])
     ],
     "vtm_shared": [
@@ -122,11 +122,13 @@ question_chain = {
                       "value": False, "next_link": None},
                      {"name": "As HA pairs",
                       "value": True, "next_link": None}]),
-        Question("Please provide a comma-seperated list of Services Director hostnames:",
+        Question("Please provide a comma-seperated list of Services Director "
+                 "management IPs:",
                  "lbaas_settings", "admin_servers"),
         Question("What is the Glance ID of the vTM image to use?",
                  "lbaas_settings", "image_id"),
-        Question("What is the Nova ID of the flavor to use for vTMs?",
+        Question("What is the Nova ID of the flavor to use for vTMs? "
+                 "(must be at least 2GB RAM/16GB disk)",
                  "lbaas_settings", "flavor_id"),
         Question("Which management mode should be used?", "lbaas_settings",
                  "management_mode", options=[
@@ -155,9 +157,11 @@ question_chain = {
                  var_type=int),
         Question("How much bandwidth (Mbps) should each vTM be allocated?",
                  "services_director_settings", "bandwidth", var_type=int),
-        Question("Which Services Director feature pack should each vTM use?",
+        Question("Which Services Director \"feature_pack\" resource should "
+                 "each vTM use?",
                  "services_director_settings", "feature_pack"),
-        Question("Which Services Director version resource should each vTM use?",
+        Question("Which Services Director \"version\" resource should "
+                 "each vTM use?",
                  "services_director_settings", "version_resource"),
         Question("Which Services Director FLA license resource should each vTM use?",
                  "services_director_settings", "fla_license",
