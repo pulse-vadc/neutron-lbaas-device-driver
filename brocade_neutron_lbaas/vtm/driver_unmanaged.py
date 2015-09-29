@@ -355,7 +355,12 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             vtm = vTM(
                 url,
                 cfg.CONF.services_director_settings.username,
-                cfg.CONF.services_director_settings.password
+                cfg.CONF.services_director_settings.password,
+                connectivity_test_url="%s/instance/%s/tm/%s" % (
+                    services_director.connectivity_test_url,
+                    hostname,
+                    cfg.CONF.vtm_settings.api_version
+                )
             )
             try:
                 if not vtm.test_connectivity():
