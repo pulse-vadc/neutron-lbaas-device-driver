@@ -459,11 +459,12 @@ class vTM(ProductInstance):
             "path": "virtual_servers", "name": "vserver", "plural": "s"}
     }
 
-    def __init__(self, base_url, username, password, initialize_config=False):
+    def __init__(self, base_url, username, password, initialize_config=False,
+                 connectivity_test_url=None):
         url = "%s/config/active" % base_url
         super(vTM, self).__init__(
             url, username, password, vTMConfigObjectList,
-            initialize_config
+            initialize_config, connectivity_test_url
         )
         #   Statistics
         # TODO: have object-specific stats available through the object itself
