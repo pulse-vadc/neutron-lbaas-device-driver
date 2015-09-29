@@ -562,7 +562,7 @@ class OpenStackInterface(object):
         endpoint = self.nova_endpoint.replace("$(tenant_id)s", tenant_id)
         endpoint = endpoint.replace("%(tenant_id)s", tenant_id)
         response = requests.get(
-            "%s/servers/%s" % (nova_endpoint, server_id),
+            "%s/servers/%s" % (endpoint, server_id),
             headers={"X-Auth-Token": token}
         )
         if response.status_code != 200:
