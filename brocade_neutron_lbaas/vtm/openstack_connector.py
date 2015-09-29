@@ -741,7 +741,9 @@ class OpenStackInterface(object):
             replay_data.update({
                 "appliance!hosts!%s" % cluster_data['peer_name']:
                 cluster_data['peer_addr'],
-                "controlallow": cluster_data['peer_addr']
+                "controlallow": "localhost,%s,%s" % (
+                    bind_ip, cluster_data['peer_addr']
+                )
             })
             if cluster_data['is_primary'] is False:
                 cluster_join_data = {
