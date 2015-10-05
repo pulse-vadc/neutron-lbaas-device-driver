@@ -341,10 +341,18 @@ class ProductInstance(ConfigObject):
                 pass
             if headers:
                 req_headers.update(headers)
-            response = http_func(
-                url,
-                data=data,
-                headers=req_headers
+            try:
+                response = http_func(
+                    url,
+                    data=data,
+                    headers=req_headers
+                )
+            except Exception as e:
+                raise Exception(
+                    "Exception '%s' making HTTP request...\nMethod: %s\n"
+                    "URL: %s\nHeaders: %s\nBody: %s" % (
+                        str(e), method, url, req_headers, data
+                    )
             )
             if not 200 <= response.status_code < 300:
                 raise Exception(
@@ -355,7 +363,10 @@ class ProductInstance(ConfigObject):
         return connector
 
     def test_connectivity(self):
-        response = self.http_session.get(self.connectivity_test_url)
+        try:
+            response = self.http_session.get(self.connectivity_test_url)
+        except Exception as e:
+            return False
         if response.status_code == 200:
             return True
         return False
