@@ -67,7 +67,7 @@ services_director_setting_opts = [
                help=_('Bandwidth allowance for vTM instances')),
     cfg.StrOpt('feature_pack',
                help=_('Feature Pack resource for vTM instances')),
-    cfg.StrOpt('fla_license',
+    cfg.StrOpt('fla_license', default="universal_v3",
                help=_('FLA license resource to apply to vTM instances')),
     cfg.StrOpt('password',
                help=_('Password of Services Director admin account')),

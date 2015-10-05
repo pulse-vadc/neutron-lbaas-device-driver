@@ -161,11 +161,8 @@ question_chain = {
                  "each vTM use?",
                  "services_director_settings", "feature_pack"),
         Question("Which Services Director \"version\" resource should "
-                 "each vTM use?",
-                 "services_director_settings", "version_resource"),
-        Question("Which Services Director FLA license resource should each vTM use?",
-                 "services_director_settings", "fla_license",
-                 default="universal_v3", next_link="vtm_private_vtmsettings")
+                 "each vTM use?", "services_director_settings",
+                 "version_resource", next_link="vtm_private_vtmsettings")
     ],
     "vtm_private_vtmsettings": [
         Question("Give tenants read-only access to the vTM GUI?",
