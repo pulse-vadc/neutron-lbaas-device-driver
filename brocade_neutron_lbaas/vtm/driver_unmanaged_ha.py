@@ -216,7 +216,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
             instance.license_name = cfg.CONF.services_director_settings.\
                                     fla_license
             instance.update()
-            sleep(5)  # Needed to ensure TIP groups are always created
+            sleep(2)  # Needed to ensure TIP groups are always created
 
     def _destroy_vtm(self, hostnames, lb):
         """
