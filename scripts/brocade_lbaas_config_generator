@@ -159,10 +159,8 @@ question_chain = {
                  "services_director_settings", "bandwidth", var_type=int),
         Question("Which Services Director \"feature_pack\" resource should "
                  "each vTM use?",
-                 "services_director_settings", "feature_pack"),
-        Question("Which Services Director \"version\" resource should "
-                 "each vTM use?", "services_director_settings",
-                 "version_resource", next_link="vtm_private_vtmsettings")
+                 "services_director_settings", "feature_pack",
+                 next_link="vtm_private_vtmsettings")
     ],
     "vtm_private_vtmsettings": [
         Question("Give tenants read-only access to the vTM GUI?",

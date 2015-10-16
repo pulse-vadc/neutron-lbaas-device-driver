@@ -75,9 +75,7 @@ services_director_setting_opts = [
                help=_('TCP port that the Services Director REST daemon '
                'listens on')),
     cfg.StrOpt('username', default="admin",
-               help=_('Username of Services Director admin account')),
-    cfg.StrOpt('version_resource',
-               help=_('Version resource for vTM instances'))
+               help=_('Username of Services Director admin account'))
 ]
 vtm_setting_opts = [
     cfg.IntOpt('admin_port', default=9090,
@@ -152,10 +150,7 @@ else:
                 "for each vTM",
             "fla_license":
                 "Name of FLA license resource to use for each vTM",
-            "password": "Password for the Services Director admin user",
-            "version_resource":
-                "Name of the Services Director version resource to use "
-                "for each vTM"
+            "password": "Password for the Services Director admin user"
         },
         "vtm_settings": {
             "nameservers": "List of nameservers for vTM instances to use"

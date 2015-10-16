@@ -179,8 +179,6 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                 rest_enabled=False,
                 owner=lb.tenant_id,
                 bandwidth=cfg.CONF.services_director_settings.bandwidth,
-                stm_version=cfg.CONF.services_director_settings.
-                            version_resource,
                 stm_feature_pack=cfg.CONF.services_director_settings.
                                  feature_pack
             )

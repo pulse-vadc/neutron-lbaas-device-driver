@@ -252,9 +252,8 @@ class ServicesDirector(ProductInstance):
         "UnmanagedInstance": {
             "class": ConfigObjectFactory(
                 "UnmanagedInstance",
-                ["owner", "management_address", "stm_version",
-                "admin_username", "admin_password", "bandwidth",
-                "stm_feature_pack"],
+                ["owner", "management_address", "stm_feature_pack",
+                "admin_username", "admin_password", "bandwidth"],
                 ServicesDirectorUnmanagedInstanceObject,
                 {
                     "_url_modifiers": {
