@@ -49,7 +49,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             )
             for server in cfg.CONF.lbaas_settings.admin_servers
         ]
-        LOG.error(
+        LOG.info(
             _("\nShared Brocade vTM LBaaS module initialized with %s " % len(
                 self.vtms
             ) + "cluster members.\nPlease restart the Neutron "

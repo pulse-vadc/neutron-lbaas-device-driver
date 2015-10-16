@@ -58,7 +58,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             for server in services_director_list
         ]
         self.openstack_connector = OpenStackInterface()
-        LOG.debug(_("\nBrocade vTM LBaaS module initialized."))
+        LOG.info(_("\nBrocade vTM LBaaS module initialized."))
 
     def create_loadbalancer(self, lb):
         """
