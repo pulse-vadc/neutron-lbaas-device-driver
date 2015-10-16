@@ -64,7 +64,7 @@ if cfg.CONF.lbaas_settings.product is None:
 
 if cfg.CONF.lbaas_settings.product == "VTM":
     from vtm import device_driver as product_driver
-    LOG.error(_("\nBrocade LBaaS plugin loading vTM module..."))
+    LOG.info(_("\nBrocade LBaaS plugin loading vTM module..."))
 else:
     raise Exception(
         _("Unknown Brocade product '%s'" % cfg.CONF.lbaas_settings.product)
