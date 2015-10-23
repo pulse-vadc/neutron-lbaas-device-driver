@@ -201,6 +201,11 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                 try:
                     if not vtm.test_connectivity():
                         raise Exception("")
+                    instance.rest_enabled = True
+                    instance.license_name = \
+                        cfg.CONF.services_director_settings.fla_license
+                    instance.update()
+                    sleep(5)  # Needed to ensure TIP groups are always created
                     break
                 except Exception:
                     pass
@@ -210,11 +215,6 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                             member['hostname']
                         ))
                 sleep(10)
-            instance.rest_enabled = True
-            instance.license_name = cfg.CONF.services_director_settings.\
-                                    fla_license
-            instance.update()
-            sleep(2)  # Needed to ensure TIP groups are always created
 
     def _destroy_vtm(self, hostnames, lb):
         """
