@@ -43,14 +43,17 @@ class Question(object):
             for i, opt in enumerate(self.options, 1):
                 print "\t%s) %s" % (i, opt['name'])
             ans = 0
-            while ans < 1 or ans > len(self.options):
+            while True:
                 try:
                     ans = int(raw_input(
                         "Please enter your choice [1-%s]: " % len(self.options)
                     ))
+                    if 1 <= ans <= len(self.options):
+                        break
                 except ValueError:
                     ans = 0
-                    print "Invalid input, please enter a number."
+                print("Invalid input, please enter a number "
+                      "in the range 1 to %s" % len(self.options))
             return self.Answer(
                 self.options[ans - 1]['value'],
                 self.options[ans - 1]['next_link']
