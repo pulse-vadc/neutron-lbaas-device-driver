@@ -17,8 +17,15 @@
 # Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
 #
 
-import sys
 from getpass import getpass
+import socket
+import sys
+
+
+class InvalidIpAddressError(Exception):
+    def __init__(self, ip):
+        self.ip = ip
+
 
 class Question(object):
     class Answer(object):
@@ -80,8 +87,24 @@ class Question(object):
                         return self.Answer(ans, self.next_link)
                     except ValueError:
                         print "Invalid input: must be %s" % self.var_type
+                    except InvalidIpAddressError as e:
+                        print "Invalid IP address %s specified" % e.ip
                 else:
                     return self.Answer(ans, self.next_link)
+
+
+def ip_address_list(ip_list):
+    ip_addresses = [ip.strip() for ip in ip_list.split(",")]
+    for ip in ip_addresses:
+        if ip in ["0.0.0.0", "255.255.255.255"]:
+            raise InvalidIpAddressError(ip)
+        try:
+            socket.inet_pton(socket.AF_INET, ip)
+        except:
+            try:
+                socket.inet_pton(socket.AF_INET6, ip)
+            except:
+                raise InvalidIpAddressError(ip)
 
 
 question_chain = {
@@ -95,8 +118,8 @@ question_chain = {
     ],
     "vtm_shared": [
         Question("Please provide a comma-seperated list of all vTM "
-                 "hostnames in your cluster:", "lbaas_settings",
-                 "admin_servers"),
+                 "management IPs in your cluster:", "lbaas_settings",
+                 "admin_servers", var_type=ip_address_list),
         Question("What is the username for the vTM cluster admin user?",
                  "vtm_settings", "username", default="admin"),
         Question("What is the password for the vTM cluster admin user?",
@@ -123,7 +146,7 @@ question_chain = {
                       "value": True, "next_link": None}]),
         Question("Please provide a comma-seperated list of Services Director "
                  "management IPs:",
-                 "lbaas_settings", "admin_servers"),
+                 "lbaas_settings", "admin_servers", var_type=ip_address_list),
         Question("What is the Glance ID of the vTM image to use?",
                  "lbaas_settings", "image_id"),
         Question("What is the Nova ID of the flavor to use for vTMs? "
@@ -169,11 +192,11 @@ question_chain = {
         Question("What timezone are the vTMs in?",
                  "vtm_settings", "timezone", default="Europe/London"),
         Question("Please provide a comma-seperated list of your nameservers:",
-                 "vtm_settings", "nameservers",
+                 "vtm_settings", "nameservers", var_type=ip_address_list,
                  next_link="vtm_all_vtmsettings"),
     ],
     "vtm_all_vtmsettings": [
-        Question("Should HTTPS off-load be supported? (Select No if Barbican "
+        Question("Should HTTPS off-load be supported? (Select 2 if Barbican "
                  "is not available)?",
                  "lbaas_settings", "https_offload", options=[
                      {"name": "Yes", "value": True, "next_link": None},
