@@ -35,7 +35,8 @@ def check_required_settings(required):
                 "Brocade configuration file:\n\n"
     key_missing = False
     for section, required_settings in required.iteritems():
-        error_msg += "[%s]\n" % section
+        section_key_missing = False
+        error_msg += "Missing from section [%s]:\n" % section
         configured_settings = [
             key for key, value in getattr(cfg.CONF, section).iteritems()
             if value is not None
@@ -45,7 +46,10 @@ def check_required_settings(required):
                 error_msg += "%s: %s\n" % (
                         setting, help_string
                 )
+                section_key_missing = True
                 key_missing = True
+        if not section_key_missing:
+            error_ms += "Nothing\n"
         error_msg += "\n"
     if key_missing:
         error_msg += "Please ensure that the Brocade configuration file " + \

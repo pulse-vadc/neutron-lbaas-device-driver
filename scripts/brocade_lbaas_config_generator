@@ -45,7 +45,9 @@ class Question(object):
             ans = 0
             while ans < 1 or ans > len(self.options):
                 try:
-                    ans = int(raw_input("Choice: "))
+                    ans = int(raw_input(
+                        "Please enter your choice [1-%s]: " % len(self.options)
+                    ))
                 except ValueError:
                     ans = 0
                     print "Invalid input, please enter a number."
@@ -81,12 +83,6 @@ class Question(object):
 
 question_chain = {
     "start": [
-        Question("Which Brocade product do you wish to use?", "lbaas_settings",
-                 "product", options=[
-                     {"name": "vTM", "value": "VTM",
-                      "next_link": "vtm_model"}])
-    ],
-    "vtm_model": [
         Question("What deployment model are you using?", "lbaas_settings",
                  "deployment_model", options=[
                      {"name": "Shared vTM instances", "value": "SHARED",
