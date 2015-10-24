@@ -337,8 +337,10 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         Gets available instance of Brocade Services Director from the cluster.
         """
         for services_director in self.services_directors:
-            if services_director.test_connectivity():
-                return services_director
+            for _ in range(3):
+                if services_director.test_connectivity():
+                    return services_director
+                sleep(2)
         raise Exception("Could not contact any Services Directors")
 
     def _get_vtm(self, hostname):
