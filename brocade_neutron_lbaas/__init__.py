@@ -49,7 +49,7 @@ def check_required_settings(required):
                 section_key_missing = True
                 key_missing = True
         if not section_key_missing:
-            error_ms += "Nothing\n"
+            error_msg += "Nothing\n"
         error_msg += "\n"
     if key_missing:
         error_msg += "Please ensure that the Brocade configuration file " + \
