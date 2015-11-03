@@ -696,7 +696,7 @@ class OpenStackInterface(object):
             "appliance!licence_agreed": "Yes",
             "rest!port": cfg.CONF.vtm_settings.rest_port,
             "appliance!if!eth0!autoneg": "Yes",
-            "appliance!if!eth0!mtu": "1454",
+            "appliance!if!eth0!mtu": cfg.CONF.vtm_settings.mtu,
             "appliance!ip!eth0!isexternal": "No",
             "rest!bindips": bind_ip,
             "control!bindip": bind_ip if cluster_data else "127.0.0.1",

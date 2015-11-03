@@ -86,6 +86,8 @@ vtm_setting_opts = [
                help=_('Port that the vTM cluster healthchecks on')),
     cfg.BoolOpt('gui_access', default=False,
                 help=_('Allow read-only access to the web GUI')),
+    cfg.IntOpt('mtu', default=1454,
+               help=_('MTU for the vTM instance interfaces')),
     cfg.ListOpt('nameservers',
                help=_('List of nameservers for vTM to use')),
     cfg.StrOpt('password',
