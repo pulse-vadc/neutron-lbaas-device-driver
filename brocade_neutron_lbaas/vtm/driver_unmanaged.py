@@ -70,6 +70,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         """
         LOG.debug(_("\ncreate_loadbalancer(%s): called" % lb.id))
         try:
+            self._assert_not_mgmt_network(lb.subnet_id)
             if self.lb_deployment_model == "PER_TENANT":
                 hostname = self._get_hostname(lb.tenant_id)
                 if not self.openstack_connector.vtm_exists(
@@ -372,6 +373,11 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 pass
             sleep(i)
         raise Exception("Could not contact vTM instance")
+
+    def _assert_not_mgmt_network(self, subnet_id):
+        network_id = self.openstack_connector.get_network_for_subnet(subnet_id)
+        if network_id == cfg.CONF.lbaas_settings.management_network:
+            raise Exception("Specified subnet is part of management network")
 
     def _spawn_vtm(self, hostname, lb):
         """

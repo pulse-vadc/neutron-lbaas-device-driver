@@ -528,6 +528,10 @@ class OpenStackInterface(object):
         }}
         return neutron.create_floatingip(floatingip_data)
 
+    def get_network_for_subnet(self, subnet_id):
+        neutron = self.get_neutron_client()
+        return neutron.show_subnet(subnet_id)['subnet']['network_id']
+
     def create_server(self, tenant_id, hostname, user_data, nics, password):
         """
         Creates a Nova instance of the vTM image.
