@@ -70,7 +70,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         """
         LOG.debug(_("\ncreate_loadbalancer(%s): called" % lb.id))
         try:
-            self._assert_not_mgmt_network(lb.subnet_id)
+            self._assert_not_mgmt_network(lb.vip_subnet_id)
             if self.lb_deployment_model == "PER_TENANT":
                 hostname = self._get_hostname(lb.tenant_id)
                 if not self.openstack_connector.vtm_exists(
