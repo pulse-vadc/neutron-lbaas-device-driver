@@ -153,7 +153,7 @@ class OpenStackInterface(object):
             nics=nics,
             password=password
         )
-        self.lock_server(tenant_id, instance['server']['id'])
+        self.set_server_lock(tenant_id, instance['server']['id'], lock=True)
         self._await_build_complete(tenant_id, instance['server']['id'])
         return instance
 
@@ -574,7 +574,7 @@ class OpenStackInterface(object):
             raise Exception("Server Not found")
         return response.json()
 
-    def lock_server(self, tenant_id, server_id):
+    def set_server_lock(self, tenant_id, server_id, lock=True):
         token = self.get_auth_token(tenant_id=tenant_id)
         endpoint = self.nova_endpoint.replace("$(tenant_id)s", tenant_id)
         endpoint = endpoint.replace("%(tenant_id)s", tenant_id)
@@ -584,7 +584,7 @@ class OpenStackInterface(object):
                 "X-Auth-Token": token,
                 "Content-Type": "application/json"
             },
-            data='{ "lock": null }'
+            data='{ "%s": null }' % ("lock" if lock else "unlock")
         )
         if response.status_code != 202:
             raise Exception("Failed to lock server %s" % server_id)
@@ -621,6 +621,7 @@ class OpenStackInterface(object):
         """
         Deletes a Nova instance.
         """
+        self.set_server_lock(tenant_id, server_id, lock=False)
         token = self.get_auth_token(tenant_id=tenant_id)
         endpoint = self.nova_endpoint.replace("$(tenant_id)s", tenant_id)
         endpoint = endpoint.replace("%(tenant_id)s", tenant_id)
