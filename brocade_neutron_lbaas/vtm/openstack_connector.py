@@ -696,6 +696,7 @@ class OpenStackInterface(object):
             "appliance!hostname": hostname,
             "appliance!licence_agreed": "Yes",
             "rest!port": cfg.CONF.vtm_settings.rest_port,
+            "appliance!gateway": data_subnet['gateway_ip'],
             "appliance!if!eth0!autoneg": "Yes",
             "appliance!if!eth0!mtu": cfg.CONF.vtm_settings.mtu,
             "appliance!ip!eth0!isexternal": "No",
@@ -726,7 +727,6 @@ class OpenStackInterface(object):
             mgmt_subnet = neutron.show_subnet(
                 mgmt_port['fixed_ips'][0]['subnet_id']
             )['subnet']
-            replay_data["appliance!gateway"] = mgmt_subnet['gateway_ip']
             replay_data["appliance!ip!eth0!mask"] = self.get_netmask(
                 mgmt_subnet['cidr']
             )
@@ -746,7 +746,6 @@ class OpenStackInterface(object):
             replay_data["appliance!ip!eth0!mask"] = self.get_netmask(
                 data_subnet['cidr']
             )
-            replay_data["appliance!gateway"] = data_subnet['gateway_ip']
         if cluster_data:
             replay_data.update({
                 "appliance!hosts!%s" % cluster_data['peer_name']:
