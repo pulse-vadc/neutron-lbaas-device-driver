@@ -227,9 +227,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
             try:
                 self.openstack_connector.destroy_vtm(hostname, lb)
                 LOG.debug(_("\nvTM %s destroyed" % hostname))
-                services_director.unmanaged_instance.delete(
-                    "%s-%s" % (lb.id, hostname)
-                )
+                services_director.unmanaged_instance.delete(hostname)
                 LOG.debug(_("\nInstance %s deactivated" % hostname))
             except Exception as e:
                 LOG.error(_(e))
