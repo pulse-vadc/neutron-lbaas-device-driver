@@ -111,9 +111,9 @@ question_chain = {
     "start": [
         Question("What deployment model are you using?", "lbaas_settings",
                  "deployment_model", options=[
-                     {"name": "Shared vTM instances", "value": "SHARED",
+                     {"name": "Central cluster of Traffic Managers", "value": "SHARED",
                       "next_link": "vtm_shared"},
-                     {"name": "Private vTM instances for each tenant", "value": None,
+                     {"name": "Private Traffic Manager instances for each tenant", "value": None,
                       "next_link": "vtm_private"}])
     ],
     "vtm_shared": [
