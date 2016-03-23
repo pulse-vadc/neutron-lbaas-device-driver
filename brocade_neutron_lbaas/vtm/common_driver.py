@@ -437,5 +437,3 @@ class vTMDeviceDriverCommon(object):
             container_id, private=cert.get_private_key(), public=cert_chain
         )
         return cert
-
-    def _configure_connection_limit(self, vtm, connection_limit):
