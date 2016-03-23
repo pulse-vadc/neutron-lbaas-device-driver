@@ -43,6 +43,8 @@ lbaas_setting_opts = [
                help=_('Version of Keystone API to use')),
     cfg.BoolOpt('https_offload', default=True,
                 help=_('Enable HTTPS termination')),
+    cfg.StrOpt('connection_limit_mode', default="requests_per_sec", help=_(
+               'How to implement the "listener" "connection_limit" option')),
     cfg.StrOpt('image_id',
                help=_('Glance ID of vTM image file to provision')),
     cfg.StrOpt('management_mode', default='FLOATING_IP',

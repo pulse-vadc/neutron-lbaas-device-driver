@@ -120,26 +120,28 @@ class vTMDeviceDriverCommon(object):
                             )
                     except TypeError:
                         pass
-        # Configure connection limiting...
-        if listener.connection_limit < 1:
-            # Delete existing connection limiting settings if not required...
-            if vtm.rate_class.get(listener.id):
-                vtm.rate_class.delete(listener.id)
-            if vtm.rule.get("rate-%s" % listener.id):
-                vtm.rule.delete("rate-%s" % listener.id)
-            vserver_config['properties']['basic']['request_rules'] = []
-        elif old is None or old.connection_limit != listener.connection_limit:
-            # Create connection limiting settings if required
-            vtm.rate_class.create(
-                listener.id,
-                max_rate_per_second=listener.connection_limit
-            )
-            vtm.rule.create(
-                "rate-%s" % listener.id,
-                rule_text='rate.use("%s");' % listener.id
-            )
-            vserver_config['properties']['basic']['request_rules'] = \
-                ["rate-%s" % listener.id]
+        # Configure connection limiting if set to 'requests_per_second'...
+        if cfg.CONF.lbaas_settings.connection_limit_mode == "requests_per_sec":
+            if listener.connection_limit < 1:
+                # Delete existing connection limiting settings if not required
+                if vtm.rate_class.get(listener.id):
+                    vtm.rate_class.delete(listener.id)
+                if vtm.rule.get("rate-%s" % listener.id):
+                    vtm.rule.delete("rate-%s" % listener.id)
+                vserver_config['properties']['basic']['request_rules'] = []
+            elif old is None \
+            or old.connection_limit != listener.connection_limit:
+                # Create connection limiting settings if required
+                vtm.rate_class.create(
+                    listener.id,
+                    max_rate_per_second=listener.connection_limit
+                )
+                vtm.rule.create(
+                    "rate-%s" % listener.id,
+                    rule_text='rate.use("%s");' % listener.id
+                )
+                vserver_config['properties']['basic']['request_rules'] = \
+                    ["rate-%s" % listener.id]
         # Create/update virtual server...
         vtm.vserver.create(listener.id, config=vserver_config)
         # Modify Neutron security group to allow access to data port...
@@ -177,9 +179,10 @@ class vTMDeviceDriverCommon(object):
                 if cert_in_use is False:
                     vtm.ssl_server_cert.delete(container)
         # Clean up vTM connection-limiting config objects
-        if listener.connection_limit > 0:
-            vtm.rules.delete("rate-%s" % listener.id)
-            vtm.rate_class.delete(listener.id)
+        if cfg.CONF.lbaas_settings.connection_limit_mode == "requests_per_sec":
+            if listener.connection_limit > 0:
+                vtm.rules.delete("rate-%s" % listener.id)
+                vtm.rate_class.delete(listener.id)
         if use_security_group:
             # Delete security group rule for the listener port/protocol
             protocol = 'udp' if listener.protocol == "UDP" else 'tcp'
@@ -244,6 +247,14 @@ class vTMDeviceDriverCommon(object):
             pool_config['properties']['basic']['persistence_class'] = pool.id
         else:
             pool_config['properties']['basic']['persistence_class'] = ""
+        # Configure concurrent connection limiting if required...
+        if cfg.CONF.lbaas_settings.connection_limit_mode == "concurrent_conns":
+            if pool.listener.connection_limit is None:
+                pool_config['properties']['connection']\
+                           ['max_connections_per_node'] = 0
+            else:
+                pool_config['properties']['connection']\
+                ['max_connections_per_node'] = pool.listener.connection_limit
         # Create pool...
         vtm.pool.create(pool.id, config=pool_config)
         # Update vserver default pool if it's 'discard'
@@ -427,3 +438,4 @@ class vTMDeviceDriverCommon(object):
         )
         return cert
 
+    def _configure_connection_limit(self, vtm, connection_limit):

@@ -61,10 +61,11 @@ class Question(object):
                     ans = 0
                 print("Invalid input, please enter a number "
                       "in the range 1 to %s" % len(self.options))
-            return self.Answer(
-                self.options[ans - 1]['value'],
-                self.options[ans - 1]['next_link']
-            )
+            try:
+                next_l = self.options[ans - 1]['next_link']
+            except KeyError:
+                next_l = self.next_link
+            return self.Answer( self.options[ans - 1]['value'], next_l)
         else:
             while True:
                 if self.default:
@@ -134,16 +135,13 @@ question_chain = {
     "vtm_private": [
         Question("Which deployment model do you wish to use?",
                  "lbaas_settings", "deployment_model", options=[
-                     {"name": "A vTM per tenant",
-                      "value": "PER_TENANT", "next_link": None},
+                     {"name": "A vTM per tenant", "value": "PER_TENANT"},
                      {"name": "A vTM per loadbalancer object (VIP)",
-                      "value": "PER_LOADBALANCER", "next_link": None}]),
+                      "value": "PER_LOADBALANCER"}]),
         Question("How should vTMs be deployed?", "lbaas_settings",
                  "deploy_ha_pairs", options=[
-                     {"name": "As single instances",
-                      "value": False, "next_link": None},
-                     {"name": "As HA pairs",
-                      "value": True, "next_link": None}]),
+                     {"name": "As single instances", "value": False},
+                     {"name": "As HA pairs", "value": True}]),
         Question("Please provide a comma-seperated list of Services Director "
                  "management IPs:",
                  "lbaas_settings", "admin_servers", var_type=ip_address_list),
@@ -187,8 +185,8 @@ question_chain = {
     "vtm_private_vtmsettings": [
         Question("Give tenants read-only access to the vTM GUI?",
                  "vtm_settings", "gui_access", options=[
-                     {"name": "Yes", "value": True, "next_link": None},
-                     {"name": "No", "value": False, "next_link": None}]),
+                     {"name": "Yes", "value": True},
+                     {"name": "No", "value": False}]),
         Question("What timezone are the vTMs in?",
                  "vtm_settings", "timezone", default="Europe/London"),
         Question("Please provide a comma-seperated list of your nameservers:",
@@ -199,8 +197,15 @@ question_chain = {
         Question("Should HTTPS off-load be supported? (Select 2 if Barbican "
                  "is not available)?",
                  "lbaas_settings", "https_offload", options=[
-                     {"name": "Yes", "value": True, "next_link": None},
-                     {"name": "No", "value": False, "next_link": None}]),
+                     {"name": "Yes", "value": True},
+                     {"name": "No", "value": False}]),
+        Question("What should the 'listener' object's 'connection_limit' "
+                 "parameter apply to?",
+                 "lbaas_settings", "connection_limit_mode", options=[
+                     {"name": "Max. requests per second to each pool node",
+                      "value": "requests_per_sec"},
+                     {"name": "Max. concurrent connections to each pool node",
+                      "value": "concurrent_conns"}]),
         Question("Which TCP port does the vTM REST API listen on?",
                  "vtm_settings", "rest_port", default="9070",
                  var_type=int, next_link="vtm_all_oscredentials"),
@@ -212,8 +217,8 @@ question_chain = {
                  "lbaas_settings", "openstack_password", masked=True),
         Question("Which Keystone version should be used?",
                  "lbaas_settings", "keystone_version", options=[
-                     {"name": "v2", "value": "2", "next_link": None},
-                     {"name": "v3", "value": "3", "next_link": None}])
+                     {"name": "v2", "value": "2"},
+                     {"name": "v3", "value": "3"}])
     ]
 }
 

@@ -1,2 +1,0 @@
-include README.md brocade_neutron_lbaas
-global-exclude *.pyc
