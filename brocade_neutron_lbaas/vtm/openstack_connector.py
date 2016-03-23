@@ -700,6 +700,7 @@ class OpenStackInterface(object):
             "appliance!if!eth0!autoneg": "Yes",
             "appliance!if!eth0!mtu": cfg.CONF.vtm_settings.mtu,
             "appliance!ip!eth0!isexternal": "No",
+            "appliance!ssh!port": "2222",
             "rest!bindips": bind_ip,
             "control!bindip": bind_ip if cluster_data else "127.0.0.1",
             "appliance!nameservers":
