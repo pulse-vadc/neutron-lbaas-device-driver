@@ -105,7 +105,7 @@ class OpenStackInterface(object):
             }
         )
         cloud_init_file = self._generate_cloud_init_file(primary_user_data)
-        self.boot_vtm(
+        primary_instance = self.boot_vtm(
             lb.tenant_id, hostnames[0],
             cloud_init_file, primary_net_info['nics'], password
         )
@@ -126,7 +126,8 @@ class OpenStackInterface(object):
         cloud_init_file = self._generate_cloud_init_file(secondary_user_data)
         self.boot_vtm(
             lb.tenant_id, hostnames[1],
-            cloud_init_file, secondary_net_info['nics'], password
+            cloud_init_file, secondary_net_info['nics'], password,
+            avoid_host_of=primary_instance.id
         )
         return {
             "password": password,
@@ -142,7 +143,8 @@ class OpenStackInterface(object):
             ]
         }
 
-    def boot_vtm(self, tenant_id, hostname, user_data, nics, password):
+    def boot_vtm(self, tenant_id, hostname, user_data, nics, password,
+                 avoid_host_of=None):
         """
         Boots a vTM instance.
         """
@@ -151,7 +153,8 @@ class OpenStackInterface(object):
             hostname=hostname,
             user_data=user_data,
             nics=nics,
-            password=password
+            password=password,
+            avoid_host_of=avoid_host_of
         )
         self.set_server_lock(tenant_id, instance['server']['id'], lock=True)
         self._await_build_complete(tenant_id, instance['server']['id'])
@@ -532,7 +535,8 @@ class OpenStackInterface(object):
         neutron = self.get_neutron_client()
         return neutron.show_subnet(subnet_id)['subnet']['network_id']
 
-    def create_server(self, tenant_id, hostname, user_data, nics, password):
+    def create_server(self, tenant_id, hostname, user_data, nics, password,
+                      avoid_host_of=None):
         """
         Creates a Nova instance of the vTM image.
         """
@@ -550,6 +554,10 @@ class OpenStackInterface(object):
             "networks": nics,
             "config_drive": True
         }}
+        if avoid_host_of is not None:
+            body['os:scheduler_hints'] = {
+                "different_host": [avoid_host_of]
+            }
         try:
             endpoint = self.nova_endpoint.replace("$(tenant_id)s", tenant_id)
             endpoint = endpoint.replace("%(tenant_id)s", tenant_id)

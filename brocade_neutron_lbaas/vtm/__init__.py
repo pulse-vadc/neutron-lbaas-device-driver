@@ -28,6 +28,8 @@ lbaas_setting_opts = [
                help=_('List of vTM or Services Director IPs')),
     cfg.ListOpt('admin_servers',
                help=_('List of admin server (SDs or vTMs) hostnames')),
+    cfg.StrOpt('connection_limit_mode', default="requests_per_sec", help=_(
+               'How to implement the "listener" "connection_limit" option')),
     cfg.BoolOpt('deploy_ha_pairs', default=False, help=_(
                 'If set to True, an HA pair of vTMs will be deployed in '
                 'the PER_TENANT and PER_LOADBALANCER deployment models. '
@@ -43,8 +45,6 @@ lbaas_setting_opts = [
                help=_('Version of Keystone API to use')),
     cfg.BoolOpt('https_offload', default=True,
                 help=_('Enable HTTPS termination')),
-    cfg.StrOpt('connection_limit_mode', default="requests_per_sec", help=_(
-               'How to implement the "listener" "connection_limit" option')),
     cfg.StrOpt('image_id',
                help=_('Glance ID of vTM image file to provision')),
     cfg.StrOpt('management_mode', default='FLOATING_IP',
