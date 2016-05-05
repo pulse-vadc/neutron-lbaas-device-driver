@@ -127,7 +127,7 @@ class OpenStackInterface(object):
         self.boot_vtm(
             lb.tenant_id, hostnames[1],
             cloud_init_file, secondary_net_info['nics'], password,
-            avoid_host_of=primary_instance.id
+            avoid_host_of=primary_instance['id']
         )
         return {
             "password": password,
@@ -568,7 +568,7 @@ class OpenStackInterface(object):
             )
         except Exception as e:
             LOG.error(_("\nError creating vTM instance: %s" % e))
-        return response.json()
+        return response.json()['server']
 
     def get_server(self, tenant_id, server_id):
         token = self.get_auth_token(tenant_id=tenant_id)
