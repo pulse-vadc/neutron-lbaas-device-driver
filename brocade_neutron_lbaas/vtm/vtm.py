@@ -27,6 +27,7 @@ import json
 ###############################################################################
 
 
+
 class vTMConfigObject(ConfigObject):
 
     def create_from_config_data(self, data):
@@ -72,6 +73,17 @@ class vTMConfigObject(ConfigObject):
             except ValueError:
                 obj_dict['properties']['basic'][field] = value
         return obj_dict
+
+class vTMVirtualServerObject(vTMConfigObject):
+    _url_modifiers = {
+        "PUT": {
+            "type": "querystring", "value": "expert_keys=basic/max_concurrent_connections"
+        },
+        "GET": {
+            "type": "querystring", "value": "expert_keys=basic/max_concurrent_connections"
+        }
+    }
+
 
 
 ###############################################################################
@@ -454,7 +466,7 @@ class vTM(ProductInstance):
             "class": ConfigObjectFactory(
                 "VirtualServer",
                 ["enabled", "protocol", "port", "pool"],
-                vTMConfigObject
+                vTMVirtualServerObject
             ),
             "path": "virtual_servers", "name": "vserver", "plural": "s"}
     }
