@@ -63,8 +63,6 @@ lbaas_setting_opts = [
                help=_('Whether to use floating IP or dedicated mgmt network')),
     cfg.StrOpt('management_network',
                help=_('Neutron ID of network for admin traffic')),
-    cfg.ListOpt('neutron_servers', default=None,
-               help=_('List of Neutron Server hostnames')),
     cfg.IntOpt('passive_vtms', default=1,
                help=_('Number of passive vTMs to add to TrafficIP groups')),
     cfg.ListOpt('ports',
