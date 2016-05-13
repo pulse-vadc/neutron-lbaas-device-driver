@@ -142,7 +142,7 @@ class vTMDeviceDriverCommon(object):
                 )
                 vserver_config['properties']['basic']['request_rules'] = \
                     ["rate-%s" % listener.id]
-        elif old.connection_limit != listener.connection_limit:
+        elif old is None or old.connection_limit != listener.connection_limit:
             if listener.connection_limit > 0:
                 vserver_config['properties']['basic']['max_concurrent_connections'] = \
                     listener.connection_limit
