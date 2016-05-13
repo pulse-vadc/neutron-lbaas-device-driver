@@ -71,7 +71,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
             if not old or lb.vip_address != old.vip_address:
                 for hostname in hostnames:
                     port_id = self.openstack_connector.get_server_port(
-                        lb.tenant_id, hostname
+                        hostname
                     )
                     self.openstack_connector.add_ip_to_ports(
                         lb.vip_address, [port_id]
@@ -106,7 +106,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                 else:
                     for hostname in hostnames:
                         port_id = self.openstack_connector.get_server_port(
-                            lb.tenant_id, hostname
+                            hostname
                         )
                         self.openstack_connector.delete_ip_from_ports(
                             lb.vip_address, [port_id]
@@ -127,34 +127,6 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
     def _get_hostname(self, id):
         return ("vtm-%s-pri" % (id), "vtm-%s-sec" % (id))
 
-    def _get_vtm(self, hostnames):
-        services_director = self._get_services_director()
-        for i in xrange(5):
-            for hostname in hostnames:
-                url = "%s/instance/%s/tm/%s" % (
-                    services_director.instance_url,
-                    hostname,
-                    cfg.CONF.vtm_settings.api_version
-                )
-                vtm = vTM(
-                    url,
-                    cfg.CONF.services_director_settings.username,
-                    cfg.CONF.services_director_settings.password,
-                    connectivity_test_url="%s/instance/%s/tm/%s" % (
-                        services_director.connectivity_test_url,
-                        hostname,
-                        cfg.CONF.vtm_settings.api_version
-                    )
-                )
-                try:
-                    if not vtm.test_connectivity():
-                        raise Exception("")
-                    return vtm
-                except Exception:
-                    pass
-            sleep(i)
-        raise Exception("Could not contact either vTM instance in cluster")
-
     def _spawn_vtm(self, hostnames, lb):
         """
         Creates a vTM HA cluster as Nova VM instances.
@@ -162,19 +134,97 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
         configuration proxying.
         """
         services_director = self._get_services_director()
-        cluster = self.openstack_connector.create_vtms(hostnames, lb)
-        LOG.info(_("\nvTMs %s created for tenant %s" % (
-            hostnames, lb.tenant_id
-        )))
-        for member in cluster['nodes']:
+
+        # Create password and ports...
+        password = self._generate_password()
+        ports = {}
+        port_ids = []
+        security_groups = []
+        vms = []
+        if cfg.CONF.lbaas_settings.management_mode == "FLOATING_IP":
+            # Primary data port (floating IP)
+            (port, sec_grp, mgmt_ip) = self.openstack_connector.create_port(
+                lb, hostnames[0], create_floating_ip=True, cluster=True
+            )
+            ports[hostnames[0]] = {
+                "ports": {
+                    "data": port,
+                    "mgmt": None
+                },
+                "mgmt_ip": mgmt_ip,
+                "cluster_ip": port['port']['fixed_ips'][0]['ip_address']
+            }
+            port_ids.append(port['id'])
+            security_groups = [sec_grp]
+            # Secondary data port (floating IP)
+            (port, junk, mgmt_ip) = self.openstack_connector.create_port(
+                lb, hostnames[1], security_group=sec_grp,
+                create_floating_ip=True, cluster=True
+            )
+            ports[hostnames[1]] = {
+                "ports": {
+                    "data": port,
+                    "mgmt": None
+                },
+                "mgmt_ip": mgmt_ip,
+                "cluster_ip": port['port']['fixed_ips'][0]['ip_address']
+            }
+            port_ids.append(port['id'])
+        elif cfg.CONF.lbaas_settings.management_mode == "MGMT_NET":
+            # Primary data port (management network)
+            (data_port, data_sec_grp, junk) = self.openstack_connector.create_port(
+                lb, hostnames[0], cluster=True
+            )
+            # Primary mgmt port (management network)
+            (mgmt_port, mgmt_sec_grp, mgmt_ip) = self.openstack_connector.create_port(
+                lb, hostnames[0], mgmt_port=True, cluster=True
+            )
+            ports[hostnames[0]] = {
+                "ports": {
+                    "data": data_port,
+                    "mgmt": mgmt_port
+                },
+                "mgmt_ip": mgmt_ip,
+                "cluster_ip": mgmt_ip
+            }
+            security_groups = [data_sec_grp, mgmt_sec_grp]
+            port_ids.append(data_port['id'])
+            port_ids.append(mgmt_port['id'])
+            # Secondary data port (management network)
+            (data_port, sec_grp, junk) = self.openstack_connector.create_port(
+                lb, hostnames[1], security_group=data_sec_grp, cluster=True
+            )
+            # Secondary mgmt port (management network)
+            (mgmt_port, junk, mgmt_ip) = self.openstack_connector.create_port(
+                lb, hostnames[1], mgmt_port=True, security_group=mgmt_sec_grp,
+                cluster=True
+            )
+            ports[hostnames[1]] = {
+                "ports": {
+                    "data": data_port,
+                    "mgmt": mgmt_port
+                },
+                "mgmt_ip": mgmt_ip,
+                "cluster_ip": mgmt_ip
+            }
+            port_ids.append(data_port['id'])
+            port_ids.append(mgmt_port['id'])
+
+        cluster_data = {
+            "is_primary": True,
+            "peer_name": hostnames[1],
+            "peer_addr": ports[hostnames[1]]['cluster_ip']
+        }
+        avoid = None
+        for host in hostnames:
             instance = services_director.unmanaged_instance.create(
-                "%s-%s" % (lb.id, member['hostname']),
-                tag=member['hostname'],
+                "%s-%s" % (lb.id, host),
+                tag=host,
                 admin_username=cfg.CONF.vtm_settings.username,
-                admin_password=cluster['password'],
-                management_address=member['mgmt_ip'],
+                admin_password=password,
+                management_address=ports[host]['mgmt_ip'],
                 rest_address="%s:%s" % (
-                    member['mgmt_ip'], cfg.CONF.vtm_settings.rest_port
+                    ports[host]['mgmt_ip'], cfg.CONF.vtm_settings.rest_port
                 ),
                 rest_enabled=False,
                 owner=lb.tenant_id,
@@ -184,12 +234,25 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
             )
             instance.start()
             LOG.debug(
-                _("\nvTM %s registered with Services Director" % (
-                    member['hostname']
-                )))
+                _("\nvTM %s registered with Services Director" % (host))
+            )
+            # Launch vTM...
+            vm = self.openstack_connector.create_vtm(
+                host, lb, password, ports[host]['ports'], cluster_data, avoid
+            )
+            vms.append(vm['id'])
+            # Set params for next iteration...
+            if cfg.CONF.lbaas_settings.allow_different_host_hint is True:
+                avoid = vm['id']
+            cluster_data = {
+                "is_primary": False,
+                "peer_name": hostnames[0],
+                "peer_addr": ports[hostnames[0]]['cluster_ip']
+            }
+            # Poll for completion of initial configuration...
             url = "%s/instance/%s/tm/%s" % (
                 services_director.connectivity_test_url,
-                member['hostname'],
+                host,
                 cfg.CONF.vtm_settings.api_version
             )
             vtm = vTM(
@@ -210,10 +273,26 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                 except Exception:
                     pass
                 if counter == 14:
+                    try:
+                        services_director.unmanaged_instance.delete(
+                            hostnames[0]
+                        )
+                    except:
+                        pass
+                    try:
+                        services_director.unmanaged_instance.delete(
+                            hostnames[1]
+                        )
+                    except:
+                        pass
+                    self.openstack_connector.clean_up(
+                        instances=vms,
+                        security_groups=security_groups,
+                        ports=port_ids
+                    )   
                     raise Exception(
-                        "vTM instance %s failed to boot... Timed out." % (
-                            member['hostname']
-                        ))
+                        "vTM instance %s failed to boot... Timed out" % (host)
+                    )
                 sleep(10)
 
     def _destroy_vtm(self, hostnames, lb):

@@ -73,8 +73,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             self._assert_not_mgmt_network(lb.vip_subnet_id)
             if self.lb_deployment_model == "PER_TENANT":
                 hostname = self._get_hostname(lb.tenant_id)
-                if not self.openstack_connector.vtm_exists(
-                    lb.tenant_id, hostname):
+                if not self.openstack_connector.vtm_exists(hostname):
                     self._spawn_vtm(hostname, lb)
                     sleep(5)
                 self.update_loadbalancer(lb, None)
@@ -109,7 +108,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 vtm.tip_group.create(lb.id, config=tip_config)
                 if not old or lb.vip_address != old.vip_address:
                     port_id = self.openstack_connector.get_server_port(
-                        lb.tenant_id, hostname
+                        hostname
                     )
                     self.openstack_connector.add_ip_to_ports(
                         lb.vip_address, [port_id]
@@ -143,7 +142,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                     self._destroy_vtm(hostname, lb)
                 else:
                     port_id = self.openstack_connector.get_server_port(
-                        lb.tenant_id, hostname
+                        hostname
                     )
                     self.openstack_connector.delete_ip_from_ports(
                         lb.vip_address, [port_id]
@@ -342,28 +341,44 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 if services_director.test_connectivity():
                     return services_director
                 sleep(2)
-        raise Exception("Could not contact any Services Directors")
+        raise NoServicesDirectorsAvailableError()
 
     def _get_vtm(self, hostname):
         """
         Gets available instance of Brocade vTM from a Services Director.
         """
-        services_director = self._get_services_director()
-        url = "%s/instance/%s/tm/%s" % (
-            services_director.instance_url,
-            hostname,
-            cfg.CONF.vtm_settings.api_version
-        )
+        if isinstance(hostname, list) or isinstance(hostname, tuple):
+            hostname = hostname[0]
+        try:
+            services_director = self._get_services_director()
+            url = "%s/instance/%s/tm/%s" % (
+                services_director.instance_url,
+                hostname,
+                cfg.CONF.vtm_settings.api_version
+            )
+            connectivity_test_url = "%s/instance/%s/tm/%s" % (
+                services_director.connectivity_test_url,
+                hostname,
+                cfg.CONF.vtm_settings.api_version
+            )
+            username = cfg.CONF.services_director_settings.username
+            password = cfg.CONF.services_director_settings.password
+        except NoServicesDirectorsAvailableError:
+            if cfg.CONF.vtm_settings.admin_password is None:
+                raise Exception( "Could not contact vTM instance")
+            vtm_ip = self.openstack_connector.get_mgmt_ip(hostname)
+            url = "https://%s:%s/api/tm/%s" % (
+                vtm_ip,
+                cfg.CONF.vtm_settings.rest_port,
+                cfg.CONF.vtm_settings.api_version
+            )
+            connectivity_test_url = url
+            username = "admin"
+            password = cfg.CONF.vtm_settings.admin_password
         for i in xrange(5):
             vtm = vTM(
-                url,
-                cfg.CONF.services_director_settings.username,
-                cfg.CONF.services_director_settings.password,
-                connectivity_test_url="%s/instance/%s/tm/%s" % (
-                    services_director.connectivity_test_url,
-                    hostname,
-                    cfg.CONF.vtm_settings.api_version
-                )
+                url, username, password,
+                connectivity_test_url=connectivity_test_url
             )
             try:
                 if not vtm.test_connectivity():
@@ -386,10 +401,30 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         configuration proxying.
         """
         services_director = self._get_services_director()
-        (mgmt_ip, password) = self.openstack_connector.create_vtm(hostname, lb)
-        LOG.info(
-            _("\nvTM %s created for tenant %s" % (hostname, lb.tenant_id))
-        )
+        # Create password and ports...
+        password = self._generate_password()
+        port_ids = []
+        security_groups = []
+        vms = {}
+        if cfg.CONF.lbaas_settings.management_mode == "FLOATING_IP":
+            (port, sec_grp, mgmt_ip) = self.openstack_connector.create_port(
+                lb, hostname, create_floating_ip=True
+            )
+            ports = {"data": port, "mgmt": None}
+            port_ids.append(port['id'])
+            security_groups = [sec_grp]
+        elif cfg.CONF.lbaas_settings.management_mode == "MGMT_NET":
+            (data_port, sec_grp, junk) = self.openstack_connector.create_port(
+                lb, hostname
+            )
+            (mgmt_port, mgmt_sec_grp, mgmt_ip) = self.openstack_connector.create_port(
+                lb, hostname, mgmt_port=True
+            )
+            ports = {"data": data_port, "mgmt": mgmt_port}
+            security_groups = [sec_grp, mgmt_sec_grp]
+            port_ids.append(data_port['id'])
+            port_ids.append(mgmt_port['id'])
+
         instance = services_director.unmanaged_instance.create(
             lb.id,
             tag=hostname,
@@ -406,6 +441,11 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         )
         instance.start()
         LOG.debug(_("\nvTM %s registered with Services Director" % hostname))
+        vm = self.openstack_connector.create_vtm(hostname, lb, password, ports)
+        vms.append(vm['id'])
+        LOG.info(
+            _("\nvTM %s created for tenant %s" % (hostname, lb.tenant_id))
+        )
         url = "%s/instance/%s/tm/%s" % (
             services_director.connectivity_test_url,
             hostname,
@@ -428,6 +468,15 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             except Exception:
                 pass
             sleep(10)
+        try:
+            services_director.unmanaged_instance.delete(hostname)
+        except:
+            pass
+        self.openstack_connector.clean_up(
+            instances=vms,
+            security_groups=security_groups,
+            ports=port_ids
+        )
         raise Exception(
             "vTM instance %s failed to boot... Timed out." % hostname
         )
@@ -443,3 +492,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         services_director = self._get_services_director()
         services_director.unmanaged_instance.delete(hostname)
         LOG.debug(_("\nInstance %s deactivated" % hostname))
+
+
+class NoServicesDirectorsAvailableError(Exception):
+    pass

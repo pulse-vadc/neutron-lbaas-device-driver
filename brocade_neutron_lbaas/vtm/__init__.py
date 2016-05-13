@@ -25,9 +25,15 @@ LOG = logging.getLogger(__name__)
 
 lbaas_setting_opts = [
     cfg.ListOpt('admin_ips', default=None,
-               help=_('List of vTM or Services Director IPs')),
+                help=_('List of vTM or Services Director IPs')),
     cfg.ListOpt('admin_servers',
-               help=_('List of admin server (SDs or vTMs) hostnames')),
+                help=_('List of admin server (SDs or vTMs) hostnames')),
+    cfg.BoolOpt('allow_different_host_hint', default=False, help=_(
+                'Deploy secondary instances on different compute node. '
+                'DO NOT set to True if there is only one compute node '
+                '(e.g. DevStack)')),
+    cfg.ListOpt('configuration_source_ips', help=_(
+                'List of IPs from which API calls can be made')),
     cfg.StrOpt('connection_limit_mode', default="requests_per_sec", help=_(
                'How to implement the "listener" "connection_limit" option')),
     cfg.BoolOpt('deploy_ha_pairs', default=False, help=_(
@@ -47,6 +53,12 @@ lbaas_setting_opts = [
                 help=_('Enable HTTPS termination')),
     cfg.StrOpt('image_id',
                help=_('Glance ID of vTM image file to provision')),
+    cfg.StrOpt('lbaas_project_id',
+               help=_('Keystone ID of LBaaS instance container project')),
+    cfg.StrOpt('lbaas_project_password', default="password",
+               help=_('Password for LBaaS operations')),
+    cfg.StrOpt('lbaas_project_username', default="lbaas_admin",
+               help=_('Username for LBaaS operations')),
     cfg.StrOpt('management_mode', default='FLOATING_IP',
                help=_('Whether to use floating IP or dedicated mgmt network')),
     cfg.StrOpt('management_network',
@@ -57,10 +69,12 @@ lbaas_setting_opts = [
                help=_('Number of passive vTMs to add to TrafficIP groups')),
     cfg.ListOpt('ports',
                help=_('Neutron port IDs of Stingray traffic-handling ports')),
-    cfg.StrOpt('openstack_password',
+    cfg.StrOpt('os_admin_password', default="password",
                help=_('Password of OpenStack admin account')),
-    cfg.StrOpt('openstack_username', default="admin",
-               help=_('Username of OpenStack admin account'))
+    cfg.StrOpt('os_admin_username', default="admin",
+               help=_('LBaaS instance container project')),
+    cfg.StrOpt('os_admin_project_id',
+               help=_('Keystone ID of admin project'))
 ]
 services_director_setting_opts = [
     cfg.StrOpt('api_version', default="2.0",
@@ -80,6 +94,10 @@ services_director_setting_opts = [
                help=_('Username of Services Director admin account'))
 ]
 vtm_setting_opts = [
+    cfg.StrOpt('admin_password', default=None,
+               help=_('Admin password for all vTM instances (a unique '
+                      'password for each instance will be generated if '
+                      'this is set to None)')),
     cfg.IntOpt('admin_port', default=9090,
                help=_('Port that the vTM admin interface listens on')),
     cfg.StrOpt('api_version', default="3.3",
@@ -88,7 +106,7 @@ vtm_setting_opts = [
                help=_('Port that the vTM cluster healthchecks on')),
     cfg.BoolOpt('gui_access', default=False,
                 help=_('Allow read-only access to the web GUI')),
-    cfg.IntOpt('mtu', default=1454,
+    cfg.IntOpt('mtu', default=1450,
                help=_('MTU for the vTM instance interfaces')),
     cfg.ListOpt('nameservers',
                help=_('List of nameservers for vTM to use')),
@@ -118,7 +136,7 @@ if cfg.CONF.lbaas_settings.deployment_model == "SHARED":
         "lbaas_settings": {
             "admin_servers":
                 "List of vTMs in shared cluster (hostnames or IPs)",
-            "openstack_password":
+            "os_admin_password":
                 "Password of OpenStack admin user",
             "ports":
                 "List of UUIDs of the Neutron ports that connect the "
@@ -143,7 +161,7 @@ else:
                 "For MGMT_NET mode, the Neutron UUID of the management "
                 "network. For FLOATING_IP mode, the Neutron UUID of the "
                 "network on which to raise the floating IPs.",
-            "openstack_password":
+            "os_admin_password":
                 "Password of OpenStack admin user"
         },
         "services_director_settings": {

@@ -20,13 +20,13 @@
 from abc import ABCMeta, abstractmethod
 import json
 import requests
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from threading import Thread
 from time import time, sleep
 from urllib import quote
-import urllib3
 
 # Disable warnings for self-signed certs
-urllib3.disable_warnings()
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 
 ###############################################################################
@@ -364,7 +364,9 @@ class ProductInstance(ConfigObject):
 
     def test_connectivity(self):
         try:
-            response = self.http_session.get(self.connectivity_test_url)
+            response = self.http_session.get(
+                self.connectivity_test_url, timeout=3
+            )
         except Exception as e:
             return False
         if response.status_code == 200:

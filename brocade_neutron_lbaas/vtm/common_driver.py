@@ -17,13 +17,15 @@
 # Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
 #
 
-from neutron_lbaas.common.cert_manager import CERT_MANAGER_PLUGIN
+from neutron_lbaas.common.cert_manager import _CERT_MANAGER_PLUGIN
 from neutron_lbaas.common.tls_utils.cert_parser import get_host_names
 from oslo.config import cfg
 from oslo_log import log as logging
+from random import choice, randint
+from string import ascii_letters, digits
 
 LOG = logging.getLogger(__name__)
-certificate_manager = CERT_MANAGER_PLUGIN.CertManager
+certificate_manager = _CERT_MANAGER_PLUGIN.CertManager
 
 
 class vTMDeviceDriverCommon(object):
@@ -424,6 +426,12 @@ class vTMDeviceDriverCommon(object):
 
     def _get_hostname(self, id):
         return "vtm-%s" % (id)
+
+    def _generate_password(self):
+        if cfg.CONF.vtm_settings.admin_password is None:
+            chars = ascii_letters + digits
+            return "".join(choice(chars) for _ in range(randint(12, 16)))
+        return cfg.CONF.vtm_settings.admin_password
 
     def _upload_certificate(self, vtm, container_id):
         # Get the certificate from Barbican
