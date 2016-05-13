@@ -78,6 +78,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             tip_group_nodes = self._get_tip_group_nodes(vtm)
             tip_config = {"properties": {
                 "basic": {
+                    "enabled": lb.admin_state_up,
                     "ipaddresses": [lb.vip_address],
                     "machines": tip_group_nodes['machines'],
                     "slaves": tip_group_nodes['passive'],

@@ -144,14 +144,12 @@ class vTMDeviceDriverCommon(object):
                 )
                 vserver_config['properties']['basic']['request_rules'] = \
                     ["rate-%s" % listener.id]
-        elif listener.default_pool is not None \
-        and old.connection_limit != listener.connection_limit:
-            pool = vtm.pool.get(listener.default_pool.id)
+        elif old is None or old.connection_limit != listener.connection_limit:
             if listener.connection_limit > 0:
-                pool.connection__max_connections_per_node = listener.connection_limit
+                vserver_config['properties']['basic']['max_concurrent_connections'] = \
+                    listener.connection_limit
             else:
-                pool.connection__max_connections_per_node = 0
-            pool.update()
+                vserver_config['properties']['basic']['max_concurrent_connections'] = 0
         # Create/update virtual server...
         vtm.vserver.create(listener.id, config=vserver_config)
         # Modify Neutron security group to allow access to data port...
@@ -258,14 +256,6 @@ class vTMDeviceDriverCommon(object):
             pool_config['properties']['basic']['persistence_class'] = pool.id
         else:
             pool_config['properties']['basic']['persistence_class'] = ""
-        # Configure concurrent connection limiting if required...
-        if cfg.CONF.lbaas_settings.connection_limit_mode == "concurrent_conns":
-            if pool.listener.connection_limit == -1:
-                pool_config['properties']['connection']\
-                           ['max_connections_per_node'] = 0
-            else:
-                pool_config['properties']['connection']\
-                ['max_connections_per_node'] = pool.listener.connection_limit
         # Create pool...
         vtm.pool.create(pool.id, config=pool_config)
         # Update vserver default pool if it's 'discard'

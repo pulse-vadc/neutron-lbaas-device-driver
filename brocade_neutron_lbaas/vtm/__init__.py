@@ -100,7 +100,7 @@ vtm_setting_opts = [
                       'this is set to None)')),
     cfg.IntOpt('admin_port', default=9090,
                help=_('Port that the vTM admin interface listens on')),
-    cfg.StrOpt('api_version', default="3.3",
+    cfg.StrOpt('api_version', default="3.8",
                help=_('Version of Stingray REST API to use')),
     cfg.IntOpt('cluster_port', default=9080,
                help=_('Port that the vTM cluster healthchecks on')),
