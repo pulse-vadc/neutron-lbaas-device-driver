@@ -101,6 +101,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 vtm = self._get_vtm(hostname)
                 tip_config = {"properties": {
                     "basic": {
+                        "enabled": lb.admin_state_up,
                         "ipaddresses": [lb.vip_address],
                         "machines": vtm.get_nodes_in_cluster(),
                         "note": lb.name
