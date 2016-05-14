@@ -234,7 +234,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 hostname = self._get_hostname(pool.tenant_id)
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(pool.listener.loadbalancer_id)
-            vtm = self._get_vtm(hostname)
+            vtm = self._get_vtm(hostname, True)
             super(BrocadeAdxDeviceDriverV2, self).update_pool(
                 pool, old, vtm
             )
@@ -255,7 +255,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 hostname = self._get_hostname(pool.tenant_id)
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(pool.listener.loadbalancer_id)
-            vtm = self._get_vtm(hostname)
+            vtm = self._get_vtm(hostname, True)
             super(BrocadeAdxDeviceDriverV2, self).delete_pool(
                 pool, vtm
             )
