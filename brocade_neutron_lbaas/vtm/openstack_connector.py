@@ -53,7 +53,7 @@ class OpenStackInterface(object):
                 service_id=nova_service.id
             ).adminurl
             self.nova_endpoint = nova_endpoint.replace(
-                "$(tenant_id)s", self.lbaas_project_id
+                "%(tenant_id)s", self.lbaas_project_id
             )
         else:
             self.neutron_endpoint = keystone.endpoints.find(
