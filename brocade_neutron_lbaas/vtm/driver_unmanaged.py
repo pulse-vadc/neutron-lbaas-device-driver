@@ -182,7 +182,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 hostname = self._get_hostname(listener.loadbalancer_id)
                 listen_on_settings['listen_on_traffic_ips'] = []
                 listen_on_settings['listen_on_any'] = True
-            vtm = self._get_vtm(hostname)
+            vtm = self._get_vtm(hostname, True)
             super(BrocadeAdxDeviceDriverV2, self).update_listener(
                 listener, old, vtm, listen_on_settings
             )
@@ -205,7 +205,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 hostname = self._get_hostname(listener.tenant_id)
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(listener.loadbalancer_id)
-            vtm = self._get_vtm(hostname)
+            vtm = self._get_vtm(hostname, True)
             super(BrocadeAdxDeviceDriverV2, self).delete_listener(
                 listener, vtm
             )
@@ -344,7 +344,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 sleep(2)
         raise NoServicesDirectorsAvailableError()
 
-    def _get_vtm(self, hostname):
+    def _get_vtm(self, hostname, byPassSD=False):
         """
         Gets available instance of Brocade vTM from a Services Director.
         """
@@ -352,6 +352,9 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             hostname = hostname[0]
         try:
             services_director = self._get_services_director()
+            # for connection limit listener expert key fix
+            if byPassSD is True:
+                raise NoServicesDirectorsAvailableError() 
             url = "%s/instance/%s/tm/%s" % (
                 services_director.instance_url,
                 hostname,
