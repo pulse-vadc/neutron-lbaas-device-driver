@@ -272,8 +272,8 @@ class OpenStackInterface(object):
         )
         return(port, security_group, mgmt_ip)
 
-    def create_lb_security_group(self, uuid, mgmt_port=False, mgmt_label=False,
-                                 cluster=False):
+    def create_lb_security_group(self, tenant_id, uuid, mgmt_port=False,
+                                 mgmt_label=False, cluster=False):
         """
         Creates a security group.
         """
@@ -286,6 +286,7 @@ class OpenStackInterface(object):
         # If GUI access is allowed, open up the GUI port
         if cfg.CONF.vtm_settings.gui_access is True and not mgmt_label:
             self.create_security_group_rule(
+                tenant_id,
                 sec_grp['security_group']['id'],
                 port=cfg.CONF.vtm_settings.admin_port
             )
@@ -295,6 +296,7 @@ class OpenStackInterface(object):
         if mgmt_port:
             for server in cfg.CONF.lbaas_settings.configuration_source_ips:
                 self.create_security_group_rule(
+                    tenant_id,
                     sec_grp['security_group']['id'],
                     port=cfg.CONF.vtm_settings.rest_port,
                     src_addr=socket.gethostbyname(server)
@@ -302,22 +304,26 @@ class OpenStackInterface(object):
         # If cluster, add necessary ports for intra-cluster comms
         if cluster is True:
             self.create_security_group_rule(
+                tenant_id,
                 sec_grp['security_group']['id'],
                 port=cfg.CONF.vtm_settings.admin_port,
                 remote_group=sec_grp['security_group']['id']
             )
             self.create_security_group_rule(
+                tenant_id,
                 sec_grp['security_group']['id'],
                 port=cfg.CONF.vtm_settings.admin_port,
                 remote_group=sec_grp['security_group']['id'],
                 protocol='udp'
             )
             self.create_security_group_rule(
+                tenant_id,
                 sec_grp['security_group']['id'],
                 port=cfg.CONF.vtm_settings.cluster_port,
                 remote_group=sec_grp['security_group']['id']
             )
             self.create_security_group_rule(
+                tenant_id,
                 sec_grp['security_group']['id'],
                 port=cfg.CONF.vtm_settings.cluster_port,
                 remote_group=sec_grp['security_group']['id'],
@@ -325,9 +331,9 @@ class OpenStackInterface(object):
             )
         return sec_grp
 
-    def create_security_group_rule(self, sec_grp_id, port, src_addr=None,
-                                   remote_group=None, direction="ingress",
-                                   protocol='tcp'):
+    def create_security_group_rule(self, tenant_id, sec_grp_id, port,
+                                   src_addr=None, remote_group=None,
+                                   direction="ingress", protocol='tcp'):
         """
         Creates the designatted rule in a security group.
         """
@@ -338,7 +344,8 @@ class OpenStackInterface(object):
             "ethertype": "IPv4",
             "port_range_max": port,
             "protocol": protocol,
-            "security_group_id": sec_grp_id
+            "security_group_id": sec_grp_id,
+            "tenant_id": tenant_id
         }}
         if src_addr:
             new_rule['security_group_rule']['remote_ip_prefix'] = src_addr
@@ -346,8 +353,8 @@ class OpenStackInterface(object):
             new_rule['security_group_rule']['remote_group_id'] = remote_group
         try:
             neutron.create_security_group_rule(new_rule)
-        except Exception:
-            # Rule already exists
+        except Exception as e:
+            # Rule may already exist
             pass
 
     def allow_port(self, lb, port, protocol='tcp'):
@@ -365,7 +372,9 @@ class OpenStackInterface(object):
             name=sec_grp_name
         )['security_groups'][0]
         # Create the required rule
-        self.create_security_group_rule(sec_grp['id'], port, protocol=protocol)
+        self.create_security_group_rule(
+            lb.tenant_id, sec_grp['id'], port, protocol=protocol
+        )
 
     def block_port(self, lb, port, protocol='tcp'):
         """

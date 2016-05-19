@@ -36,7 +36,7 @@ class vTMDeviceDriverCommon(object):
     PROTOCOL_MAP = {
         "HTTP": "http",
         "HTTPS": "https",
-        "TCP": "client_first",
+        "TCP": "server_first",
         "TERMINATED_HTTPS": "http",
         "UDP": "udp"
     }
