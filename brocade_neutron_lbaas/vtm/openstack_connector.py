@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2014 Brocade Communications Systems, Inc.  All rights reserved.
+# Copyright 2016 Brocade Communications Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -21,17 +21,18 @@ import base64
 import json
 from neutronclient.neutron import client as neutron_client
 from oslo_log import log as logging
-from oslo.config import cfg
+from oslo_config import cfg
 from random import choice, randint
 import re
 import requests
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import socket
 from string import ascii_letters, digits
 from struct import pack
 from time import sleep
 
 LOG = logging.getLogger(__name__)
-
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 class OpenStackInterface(object):
     def __init__(self):
@@ -61,12 +62,7 @@ class OpenStackInterface(object):
         Creates a vTM instance as a Nova VM.
         """
         password = self._generate_password()
-        # Get NIC and IP information for the instance to be created
-        if cfg.CONF.lbaas_settings.deployment_model == "PER_LOADBALANCER":
-            use_lb_port = True
-        else:
-            use_lb_port = False
-        net_info = self._configure_ports(lb, hostname, use_lb_port)
+        net_info = self._configure_ports(lb, hostname)
         # Get user-data to pass to the configuration scripts in the
         # vTM image
         user_data = self._generate_user_data(
@@ -84,14 +80,14 @@ class OpenStackInterface(object):
         password = self._generate_password()
         # Configure ports and security groups for both instances
         primary_net_info = self._configure_ports(
-            lb, hostnames[0], False, cluster=True
+            lb, hostnames[0], cluster=True
         )
         security_groups = {
             "ports": primary_net_info['ports_sec_grp'],
             "mgmt": primary_net_info['mgmt_sec_grp']
         }
         secondary_net_info = self._configure_ports(
-            lb, hostnames[1], False, security_groups, True
+            lb, hostnames[1], security_groups, True
         )
         # Create primary instance
         primary_user_data = self._generate_user_data(
@@ -273,31 +269,24 @@ class OpenStackInterface(object):
                 self.delete_server(tenant_id, instance_id)
                 raise Exception("VM build failed")
 
-    def _configure_ports(self, lb, hostname, use_lb_port, security_groups=None,
-                         cluster=False):
+    def _configure_ports(self, lb, hostname, security_groups=None, cluster=False):
         neutron = self.get_neutron_client()
-        # Get or create port, depending on deployment model...
-        if use_lb_port is True:
-            # Data port will be the port associated with the "loadbalancer"
-            data_port = neutron.show_port(lb.vip_port_id)['port']
+        # A new port, not tied to a "loadbalancer", is needed as the
+        # instance's main address (so it isn't deleted when the "lb" is).
+        network_id = neutron.show_subnet(
+            lb.vip_subnet_id
+        )['subnet']['network_id']
+        data_port = neutron.create_port(
+            {"port": {
+                "network_id": network_id,
+                "tenant_id": lb.tenant_id,
+                "name": "data-%s" % hostname
+            }}
+        )['port']
+        if cfg.CONF.lbaas_settings.deployment_model == "PER_LOADBALANCER":
             sec_grp_uuid = lb.id
-        else:
-            # A new port, not tied to a "loadbalancer", is needed as the
-            # instance's main address (so it isn't deleted when the "lb" is).
-            network_id = neutron.show_subnet(
-                lb.vip_subnet_id
-            )['subnet']['network_id']
-            data_port = neutron.create_port(
-                {"port": {
-                    "network_id": network_id,
-                    "tenant_id": lb.tenant_id,
-                    "name": "data-%s" % hostname
-                }}
-            )['port']
-            if cfg.CONF.lbaas_settings.deployment_model == "PER_LOADBALANCER":
-                sec_grp_uuid = lb.id
-            elif cfg.CONF.lbaas_settings.deployment_model == "PER_TENANT":
-                sec_grp_uuid = lb.tenant_id
+        elif cfg.CONF.lbaas_settings.deployment_model == "PER_TENANT":
+            sec_grp_uuid = lb.tenant_id
 
         # Configure specified management method...
         data = {

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2014 Brocade Communications Systems, Inc.  All rights reserved.
+# Copyright 2016 Brocade Communications Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -17,7 +17,7 @@
 # Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
 #
 
-from oslo.config import cfg
+from oslo_config import cfg
 from oslo_log import log as logging
 from brocade_neutron_lbaas import check_required_settings
 

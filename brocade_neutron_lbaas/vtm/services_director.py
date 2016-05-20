@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2014 Brocade Communications Systems, Inc.  All rights reserved.
+# Copyright 2016 Brocade Communications Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -294,7 +294,7 @@ class ServicesDirector(ProductInstance):
         }
     }
 
-    def __init__(self, base_url, username, password, initialize_config=False,
+    def __init__(self, base_url, username, password, initialize_config=True,
                  connectivity_test_url=None):
         super(ServicesDirector, self).__init__(
             base_url, username, password, ServicesDirectorConfigObjectList,

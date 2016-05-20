@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2014 Brocade Communications Systems, Inc.  All rights reserved.
+# Copyright 2016 Brocade Communications Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -20,7 +20,7 @@
 from common_driver import vTMDeviceDriverCommon
 from neutron_lbaas.common.exceptions import LbaasException
 from openstack_connector import OpenStackInterface
-from oslo.config import cfg
+from oslo_config import cfg
 from oslo_log import log as logging
 from services_director import ServicesDirector
 from vtm import vTM
@@ -101,6 +101,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 vtm = self._get_vtm(hostname)
                 tip_config = {"properties": {
                     "basic": {
+                        "enabled": lb.admin_state_up,
                         "ipaddresses": [lb.vip_address],
                         "machines": vtm.get_nodes_in_cluster(),
                         "note": lb.name

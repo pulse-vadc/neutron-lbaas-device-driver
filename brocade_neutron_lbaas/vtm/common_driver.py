@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2014 Brocade Communications Systems, Inc.  All rights reserved.
+# Copyright 2016 Brocade Communications Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -17,13 +17,13 @@
 # Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
 #
 
-from neutron_lbaas.common.cert_manager import CERT_MANAGER_PLUGIN
+from neutron_lbaas.common.cert_manager import _CERT_MANAGER_PLUGIN
 from neutron_lbaas.common.tls_utils.cert_parser import get_host_names
-from oslo.config import cfg
+from oslo_config import cfg
 from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
-certificate_manager = CERT_MANAGER_PLUGIN.CertManager
+certificate_manager = _CERT_MANAGER_PLUGIN.CertManager
 
 
 class vTMDeviceDriverCommon(object):
@@ -34,7 +34,7 @@ class vTMDeviceDriverCommon(object):
     PROTOCOL_MAP = {
         "HTTP": "http",
         "HTTPS": "https",
-        "TCP": "client_first",
+        "TCP": "server_first",
         "TERMINATED_HTTPS": "http",
         "UDP": "udp"
     }
@@ -426,4 +426,3 @@ class vTMDeviceDriverCommon(object):
             container_id, private=cert.get_private_key(), public=cert_chain
         )
         return cert
-

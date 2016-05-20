@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2014 Brocade Communications Systems, Inc.  All rights reserved.
+# Copyright 2016 Brocade Communications Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -20,13 +20,14 @@
 from abc import ABCMeta, abstractmethod
 import json
 import requests
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from threading import Thread
 from time import time, sleep
 from urllib import quote
 import urllib3
 
 # Disable warnings for self-signed certs
-urllib3.disable_warnings()
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 
 ###############################################################################
