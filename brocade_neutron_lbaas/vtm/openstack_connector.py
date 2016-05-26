@@ -711,6 +711,48 @@ write_files:
     content: %s
     path: /root/config_data
 
+-   content: |
+        type!faulttolerance!event_tags	allmachinesok
+        actions	sync-cluster
+    path: /opt/zeus/zxtm/conf/events/allmachinesok
+
+-   content: |
+        program	sync-cluster.py
+        type	program
+    path: /opt/zeus/zxtm/conf/actions/sync-cluster
+
+-   content: |
+        #!/usr/bin/env python
+
+        import requests
+        import socket
+        import subprocess
+
+        def get_last_local_update():
+            with open("/opt/zeus/zxtm/conf/extra/last_update") as f:
+                last_update = f.readline()
+            return int(last_update.strip())
+
+        def get_last_remote_update():
+            local_hostname = socket.gethostname()
+            if local_hostname.endswith("-pri"):
+                remote_hostname = local_hostname[:-3] + "sec"
+            else:
+                remote_hostname = local_hostname[:-3] + "pri"
+            url = "https://%s:9070/api/tm/3.5/config/active/extra_files/last_update"%(
+                remote_hostname
+            )
+            last_update = requests.get(url, auth=('admin', '%s'), verify=False).text
+            return int(last_update.strip())
+
+        def main():
+            if get_last_local_update() > get_last_remote_update():
+                subprocess.call(["/opt/zeus/zxtm/bin/replicate-config"])
+
+        if __name__ == '__main__':
+            main()
+    path: /opt/zeus/zxtm/conf/actionprogs/sync-cluster.py
+
 -   encoding: b64
     content: """
 "IyEvdXNyL2Jpbi9lbnYgcHl0aG9uCiNDb3B5cmlnaHQgMjAxNCBCcm9jYWRlIENvbW11bmljYXRpb"
@@ -792,4 +834,4 @@ write_files:
 
 runcmd:
 -   [ "python", "/root/configure.py" ]
-    """ % base64.b64encode(json.dumps(user_data)))
+    """ % (base64.b64encode(json.dumps(user_data)), user_data['password']))

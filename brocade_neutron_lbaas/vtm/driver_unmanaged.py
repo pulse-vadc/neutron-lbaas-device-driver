@@ -24,7 +24,7 @@ from oslo.config import cfg
 from oslo_log import log as logging
 from services_director import ServicesDirector
 from vtm import vTM
-from time import sleep
+from time import sleep, time
 from traceback import format_exc
 
 LOG = logging.getLogger(__name__)
@@ -107,6 +107,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                     }
                 }}
                 vtm.tip_group.create(lb.id, config=tip_config)
+                self._touch_last_modified_timestamp(vtm)
                 if not old or lb.vip_address != old.vip_address:
                     port_id = self.openstack_connector.get_server_port(
                         hostname
@@ -135,6 +136,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 hostname = self._get_hostname(lb.tenant_id)
                 vtm = self._get_vtm(hostname)
                 vtm.tip_group.delete(lb.id)
+                self._touch_last_modified_timestamp(vtm)
                 if not vtm.tip_group.list():
                     LOG.debug(_(
                         "\ndelete_loadbalancer(%s): "
@@ -186,6 +188,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             super(BrocadeAdxDeviceDriverV2, self).update_listener(
                 listener, old, vtm, listen_on_settings
             )
+            self._touch_last_modified_timestamp(vtm)
             LOG.debug(_("\nupdate_listener(%s): completed" % listener.id))
         except Exception as e:
             LOG.error(
@@ -209,6 +212,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             super(BrocadeAdxDeviceDriverV2, self).delete_listener(
                 listener, vtm
             )
+            self._touch_last_modified_timestamp(vtm)
             LOG.debug(_("\ndelete_listener(%s): completed" % listener.id))
         except Exception as e:
             LOG.error(
@@ -234,10 +238,11 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 hostname = self._get_hostname(pool.tenant_id)
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(pool.listener.loadbalancer_id)
-            vtm = self._get_vtm(hostname)
+            vtm = self._get_vtm(hostname, True)
             super(BrocadeAdxDeviceDriverV2, self).update_pool(
                 pool, old, vtm
             )
+            self._touch_last_modified_timestamp(vtm)
             LOG.debug(_("\nupdate_pool(%s): completed!" % pool.id))
         except Exception as e:
             LOG.error(_("\nError in update_pool(%s): %s" % (pool.id, e)))
@@ -255,10 +260,11 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 hostname = self._get_hostname(pool.tenant_id)
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(pool.listener.loadbalancer_id)
-            vtm = self._get_vtm(hostname)
+            vtm = self._get_vtm(hostname, True)
             super(BrocadeAdxDeviceDriverV2, self).delete_pool(
                 pool, vtm
             )
+            self._touch_last_modified_timestamp(vtm)
             LOG.debug(_("\ndelete_pool(%s): completed!" % pool.id))
         except Exception as e:
             LOG.error(_("\nError in delete_pool(%s): %s" % (pool.id, e)))
@@ -280,6 +286,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             super(BrocadeAdxDeviceDriverV2, self).update_healthmonitor(
                 monitor, old, vtm
             )
+            self._touch_last_modified_timestamp(vtm)
             LOG.debug(_("\nupdate_healthmonitor(%s): completed!" % monitor.id))
         except Exception as e:
             LOG.error(
@@ -299,6 +306,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             super(BrocadeAdxDeviceDriverV2, self).delete_healthmonitor(
                 monitor, vtm
             )
+            self._touch_last_modified_timestamp(vtm)
             LOG.debug(_("\ndelete_healthmonitor(%s): completed!" % monitor.id))
         except Exception as e:
             LOG.error(
@@ -333,6 +341,10 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
 # MISC #
 ########
 
+    def _touch_last_modified_timestamp(self, vtm):
+        timestamp = str(int(time() * 1000))
+        vtm.extra_file.create("last_update", file_text=timestamp)
+
     def _get_services_director(self):
         """
         Gets available instance of Brocade Services Director from the cluster.
@@ -344,16 +356,21 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 sleep(2)
         raise NoServicesDirectorsAvailableError()
 
-    def _get_vtm(self, hostname, byPassSD=False):
+    def _get_vtm(self, hostname, bypass_sd=False):
         """
         Gets available instance of Brocade vTM from a Services Director.
         """
         if isinstance(hostname, list) or isinstance(hostname, tuple):
-            hostname = hostname[0]
+            for host in hostname:
+                try:
+                    return self._get_vtm(host, bypass_sd)
+                except:
+                    pass
+            raise Exception("Could not contact vTM instance")
         try:
             services_director = self._get_services_director()
             # for connection limit listener expert key fix
-            if byPassSD is True:
+            if bypass_sd is True:
                 raise NoServicesDirectorsAvailableError() 
             url = "%s/instance/%s/tm/%s" % (
                 services_director.instance_url,
