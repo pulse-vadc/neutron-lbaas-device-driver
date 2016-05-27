@@ -426,7 +426,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         password = self._generate_password()
         port_ids = []
         security_groups = []
-        vms = {}
+        vms = []
         if cfg.CONF.lbaas_settings.management_mode == "FLOATING_IP":
             (port, sec_grp, mgmt_ip) = self.openstack_connector.create_port(
                 lb, hostname, create_floating_ip=True
