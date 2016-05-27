@@ -53,7 +53,7 @@ class OpenStackInterface(object):
                 service_id=nova_service.id
             ).adminurl
             self.nova_endpoint = nova_endpoint.replace(
-                "%(tenant_id)s", self.lbaas_project_id
+                "$(tenant_id)s", self.lbaas_project_id
             )
         else:
             self.neutron_endpoint = keystone.endpoints.find(
@@ -247,17 +247,19 @@ class OpenStackInterface(object):
             mgmt_ip = floatingip['floatingip']['floating_ip_address']
             if security_group is None:
                 sec_grp = self.create_lb_security_group(
-                    sec_grp_uuid, mgmt_port=True, cluster=cluster
+                    lb.tenant_id, sec_grp_uuid, mgmt_port=True, cluster=cluster
                 )
                 security_group = sec_grp['security_group']['id']
         else:
             if security_group is None:
                 if mgmt_port is False:
-                    sec_grp = self.create_lb_security_group(sec_grp_uuid)
+                    sec_grp = self.create_lb_security_group(
+                        lb.tenant_id, sec_grp_uuid
+                    )
                 else:
                     sec_grp = self.create_lb_security_group(
-                        sec_grp_uuid, mgmt_port=True, mgmt_label=True,
-                        cluster=cluster
+                        lb.tenant_id, sec_grp_uuid, mgmt_port=True,
+                        mgmt_label=True, cluster=cluster
                     )
                 security_group = sec_grp['security_group']['id']            
             if mgmt_port is False:
@@ -329,6 +331,12 @@ class OpenStackInterface(object):
                 remote_group=sec_grp['security_group']['id'],
                 protocol='udp'
             )
+            self.create_security_group_rule(
+                tenant_id,
+                sec_grp['security_group']['id'],
+                port=cfg.CONF.vtm_settings.rest_port,
+                remote_group=sec_grp['security_group']['id']
+            )
         return sec_grp
 
     def create_security_group_rule(self, tenant_id, sec_grp_id, port,
@@ -345,7 +353,7 @@ class OpenStackInterface(object):
             "port_range_max": port,
             "protocol": protocol,
             "security_group_id": sec_grp_id,
-            "tenant_id": tenant_id
+            "tenant_id": self.lbaas_project_id
         }}
         if src_addr:
             new_rule['security_group_rule']['remote_ip_prefix'] = src_addr
@@ -609,13 +617,21 @@ class OpenStackInterface(object):
             mgmt_subnet = neutron.show_subnet(
                 mgmt_port['fixed_ips'][0]['subnet_id']
             )['subnet']
+            # Add static routes from subnet 'host_routes' fields
+            for host_route in mgmt_subnet['host_routes']:
+                dest = "appliance!routes!%s" % host_route['destination'].split("/")[0]
+                replay_data["%s!if" % dest] = "eth0"
+                replay_data["%s!mask" % dest] = self.get_netmask(host_route['destination'])
+                replay_data["%s!gw" % dest] = host_route['nexthop']
+            for host_route in data_subnet['host_routes']:
+                dest = "appliance!routes!%s" % host_route['destination'].split("/")[0]
+                replay_data["%s!if" % dest] = "eth1"
+                replay_data["%s!mask" % dest] = self.get_netmask(host_route['destination'])
+                replay_data["%s!gw" % dest] = host_route['nexthop']
             replay_data["appliance!hosts!%s" % hostname] = \
                 mgmt_port['fixed_ips'][0]['ip_address']
             replay_data["appliance!ip!eth0!addr"] = \
                 mgmt_port['fixed_ips'][0]['ip_address']
-            mgmt_subnet = neutron.show_subnet(
-                mgmt_port['fixed_ips'][0]['subnet_id']
-            )['subnet']
             replay_data["appliance!ip!eth0!mask"] = self.get_netmask(
                 mgmt_subnet['cidr']
             )
@@ -628,6 +644,12 @@ class OpenStackInterface(object):
                 data_subnet['cidr']
             )
         else:
+            # Add static routes from subnet 'host_routes' field
+            for host_route in data_subnet['host_routes']:
+                dest = "appliance!routes!%s" % host_route['destination'].split("/")[0]
+                replay_data["%s!if" % dest] = "eth0"
+                replay_data["%s!mask" % dest] = self.get_netmask(host_route['destination'])
+                replay_data["%s!gw" % dest] = host_route['nexthop']
             replay_data["appliance!hosts!%s" % hostname] = \
                 data_port['fixed_ips'][0]['ip_address']
             replay_data["appliance!ip!eth0!addr"] = \
@@ -708,7 +730,7 @@ class OpenStackInterface(object):
         return ("""#cloud-config
 write_files:
 -   encoding: b64
-    content: %s
+    content: {0}
     path: /root/config_data
 
 -   content: |
@@ -739,10 +761,10 @@ write_files:
                 remote_hostname = local_hostname[:-3] + "sec"
             else:
                 remote_hostname = local_hostname[:-3] + "pri"
-            url = "https://%s:9070/api/tm/3.5/config/active/extra_files/last_update"%(
+            url = "https://%s:9070/api/tm/3.5/config/active/extra_files/last_update" % (
                 remote_hostname
             )
-            last_update = requests.get(url, auth=('admin', '%s'), verify=False).text
+            last_update = requests.get(url, auth=('admin', '{1}'), verify=False).text
             return int(last_update.strip())
 
         def main():
@@ -752,6 +774,7 @@ write_files:
         if __name__ == '__main__':
             main()
     path: /opt/zeus/zxtm/conf/actionprogs/sync-cluster.py
+    permissions: '0755'
 
 -   encoding: b64
     content: """
@@ -834,4 +857,4 @@ write_files:
 
 runcmd:
 -   [ "python", "/root/configure.py" ]
-    """ % (base64.b64encode(json.dumps(user_data)), user_data['password']))
+    """.format(base64.b64encode(json.dumps(user_data)), user_data['password']))
