@@ -52,8 +52,12 @@ class OpenStackInterface(object):
             nova_endpoint = keystone.endpoints.find(
                 service_id=nova_service.id
             ).adminurl
+            # Different versions appear to use different placeholders...
             self.nova_endpoint = nova_endpoint.replace(
                 "$(tenant_id)s", self.lbaas_project_id
+            )
+            self.nova_endpoint = self.nova_endpoint.replace(
+                "%(tenant_id)s", self.lbaas_project_id
             )
         else:
             self.neutron_endpoint = keystone.endpoints.find(
