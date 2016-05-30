@@ -20,6 +20,7 @@
 from neutron_lbaas.common.exceptions import LbaasException
 from oslo.config import cfg
 from oslo_log import log as logging
+from threading import Thread
 from vtm import vTM
 from driver_unmanaged import BrocadeAdxDeviceDriverV2 \
     as vTMDeviceDriverUnmanaged
@@ -217,6 +218,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
             "peer_addr": ports[hostnames[1]]['cluster_ip']
         }
         avoid = None
+        poll_threads = {}
         for host in hostnames:
             instance = services_director.unmanaged_instance.create(
                 "%s-%s" % (lb.id, host),
@@ -250,51 +252,30 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                 "peer_name": hostnames[0],
                 "peer_addr": ports[hostnames[0]]['cluster_ip']
             }
-            # Poll for completion of initial configuration...
-            url = "%s/instance/%s/tm/%s" % (
-                services_director.connectivity_test_url,
-                host,
-                cfg.CONF.vtm_settings.api_version
-            )
-            vtm = vTM(
-                url,
-                cfg.CONF.services_director_settings.username,
-                cfg.CONF.services_director_settings.password
-            )
-            for counter in xrange(15):
+            poll_threads[host] = PollInstance(instance, host, services_director)
+            poll_threads[host].start()
+        for host, poll_thread in poll_threads.iteritems():
+            if poll_thread.join() is False:
                 try:
-                    if not vtm.test_connectivity():
-                        raise Exception("")
-                    instance.rest_enabled = True
-                    instance.license_name = \
-                        cfg.CONF.services_director_settings.fla_license
-                    instance.update()
-                    sleep(5)  # Needed to ensure TIP groups are always created
-                    break
-                except Exception:
-                    pass
-                if counter == 14:
-                    try:
-                        services_director.unmanaged_instance.delete(
-                            hostnames[0]
-                        )
-                    except:
-                        pass
-                    try:
-                        services_director.unmanaged_instance.delete(
-                            hostnames[1]
-                        )
-                    except:
-                        pass
-                    self.openstack_connector.clean_up(
-                        instances=vms,
-                        security_groups=security_groups,
-                        ports=port_ids
-                    )   
-                    raise Exception(
-                        "vTM instance %s failed to boot... Timed out" % (host)
+                    services_director.unmanaged_instance.delete(
+                        hostnames[0]
                     )
-                sleep(10)
+                except:
+                    pass
+                try:
+                    services_director.unmanaged_instance.delete(
+                        hostnames[1]
+                    )
+                except:
+                     pass
+                self.openstack_connector.clean_up(
+                    instances=vms,
+                    security_groups=security_groups,
+                    ports=port_ids
+                )   
+                raise Exception(
+                    "vTM instance %s failed to boot... Timed out" % (host)
+                )
 
     def _destroy_vtm(self, hostnames, lb):
         """
@@ -311,3 +292,43 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                 LOG.debug(_("\nInstance %s deactivated" % hostname))
             except Exception as e:
                 LOG.error(_(e))
+
+
+class PollInstance(Thread):
+    def __init__(self, instance, hostname, services_director, *args, **kwargs):
+        self.instance = instance
+        self.hostname = hostname
+        self.services_director = services_director
+        self._return = False
+        super(PollInstance, self).__init__(*args, **kwargs)
+        
+    def run(self):
+       # Poll for completion of initial configuration...
+        url = "%s/instance/%s/tm/%s" % (
+            self.services_director.connectivity_test_url,
+            self.hostname,
+            cfg.CONF.vtm_settings.api_version
+        )
+        vtm = vTM(
+            url,
+            cfg.CONF.services_director_settings.username,
+            cfg.CONF.services_director_settings.password
+        )
+        for counter in xrange(50):
+            try:
+                if not vtm.test_connectivity():
+                    raise Exception("")
+                self.instance.rest_enabled = True
+                self.instance.license_name = \
+                    cfg.CONF.services_director_settings.fla_license
+                self.instance.update()
+                sleep(5)  # Needed to ensure TIP groups are always created
+                self._return = True
+                break
+            except Exception:
+                pass
+            sleep(5)
+
+    def join(self):
+        super(PollInstance, self).join()
+        return self._return
