@@ -54,7 +54,7 @@ class OpenStackInterface(object):
             ).adminurl
             # Different versions appear to use different placeholders...
             self.nova_endpoint = nova_endpoint.replace(
-                "%(tenant_id)s", self.lbaas_project_id
+                "$(tenant_id)s", self.lbaas_project_id
             )
             self.nova_endpoint = self.nova_endpoint.replace(
                 "%(tenant_id)s", self.lbaas_project_id
