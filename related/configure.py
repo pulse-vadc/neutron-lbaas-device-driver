@@ -113,7 +113,7 @@ def main():
             s.settimeout(3)
             for _ in xrange(60):
                 try:
-                    s.connect((user_data['cluster_target'], 9090))
+                    s.connect((user_data['cluster_target'], 9070))
                 except socket.error:
                     sleep(2)
                 except socket.gaierror:
