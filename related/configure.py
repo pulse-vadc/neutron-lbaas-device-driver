@@ -3,7 +3,9 @@
 
 import os
 import json
+import socket
 from subprocess import Popen, PIPE, STDOUT, call
+from time import sleep
 
 class ConfigFile(dict):
     def __init__(self, name, path):
@@ -106,6 +108,17 @@ def main():
     if user_data['cluster_join_data'] is not None:
         with open("/tmp/replay_data", "w") as replay_file:
             replay_file.write(user_data['cluster_join_data'])
+        if user_data['cluster_target'] is not None:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(3)
+            for _ in xrange(60):
+                try:
+                    s.connect((user_data['cluster_target'], 9090))
+                except socket.error:
+                    sleep(2)
+                except socket.gaierror:
+                    break
+            s.close()
         call([ "%s/zxtm/configure" % ZEUSHOME, "--replay-from=/tmp/replay_data" ])
 
 
