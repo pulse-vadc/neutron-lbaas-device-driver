@@ -264,8 +264,10 @@ class vTMDeviceDriverCommon(object):
             vs.pool = pool.id
             vs.update()
         # Tidy up obsolete persistence class if present
-        if old is not None and old.sessionpersistence \
-            and not pool.sessionpersistence:
+        if old is not None \
+        and old.sessionpersistence \
+        and not pool.sessionpersistence \
+        and pool.lb_algorithm != "SOURCE_IP":
             vtm.persistence_class.delete(pool.id)
 
     def delete_pool(self, pool, vtm):
