@@ -82,7 +82,7 @@ def main():
         elif parameter.key.startswith("appliance!returnpath") \
         or   parameter.key.startswith("appliance!return_path"):
             settings_config[parameter.key] = parameter.value_str
-        elif parameter.prefix in [ 'appliance', 'rest', 'control' ]:
+        elif parameter.prefix in [ 'appliance', 'rest', 'control', 'snmp' ]:
             global_config[parameter.key] = parameter.value_str
         elif parameter.key in [ 'access' ]:
             security_config[parameter.key] = parameter.value_str

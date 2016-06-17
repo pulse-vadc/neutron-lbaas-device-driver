@@ -330,15 +330,23 @@ class OpenStackInterface(object):
                 port=cfg.CONF.vtm_settings.admin_port
             )
         # If mgmt_port, add the necessary rules to allow management traffic
-        # i.e. allow each Services Director to access the REST port of the
-        # instance
         if mgmt_port:
+            # REST access
             for server in cfg.CONF.lbaas_settings.configuration_source_ips:
                 self.create_security_group_rule(
                     tenant_id,
                     sec_grp['security_group']['id'],
                     port=cfg.CONF.vtm_settings.rest_port,
                     src_addr=socket.gethostbyname(server)
+                )
+            # SNMP access
+            for cidr in cfg.CONF.vtm_settings.snmp_allow_from:
+                self.create_security_group_rule(
+                    tenant_id,
+                    sec_grp['security_group']['id'],
+                    port=161,
+                    protocol='udp',
+                    src_addr=cidr
                 )
         # If cluster, add necessary ports for intra-cluster comms
         if cluster is True:
@@ -685,6 +693,16 @@ class OpenStackInterface(object):
         # Set return-path routes
         gateway_ip, gateway_mac = self.get_subnet_gateway(data_subnet['id'])
         replay_data['appliance!returnpath!%s!ipv4' % gateway_mac] = gateway_ip
+        # SNMP configuration
+        if cfg.CONF.vtm_settings.snmp_enabled is True:
+            replay_data['snmp!enabled'] = "Yes"
+            replay_data['snmp!community'] = (
+                cfg.CONF.vtm_settings.snmp_community
+            )
+            replay_data['snmp!bindip'] = bind_ip
+            replay_data['snmp!allow'] = " ".join(
+                cfg.CONF.vtm_settings.snmp_allow_from
+            )
         # GUI user settings
         if cfg.CONF.vtm_settings.gui_access is True:
             replay_data['monitor_user'] = "monitor %s" % "password"
@@ -819,6 +837,21 @@ write_files:
     path: /root/config_data
 
 -   content: |
+        community       {1}
+        snmp!version    snmpv2c
+        traphost        {2}
+        type    trap
+    path: /opt/zeus/zxtm/conf/actions/lbaas_snmp_trap
+
+-   content: |
+        actions	lbaas_snmp_trap
+        type!faulttolerance!event_tags  activatealldead allmachinesok flipperbackendsworking dropipinfo flipperfrontendsworking activatedautomatically flipperrecovered flipperraiselocalworking flipperraiseosdrop flipperraiseothersdead flipperdadreraise machinerecovered machineok stateok multihostload dropipwarn pingbackendfail zclustermoderr stateconnfail pingfrontendfail pinggwfail flipperipexists pingsendfail statereadfail statebaddata stateunexpected machinefail machinetimeout flipperraiseremotedropped statetimeout statewritefail routingswfailurelimitreached clocknotmonotonic clockjump
+        type!general!event_tags running autherror logdiskoverload confrepfailed confreptimeout fewfreefds restartrequired timemovedback numtipg-exceeded sslcrltoobig numnodes-exceeded numpools-exceeded zxtmswerror zxtmcpustarvation zxtmhighload childcommsfail appliance
+        type!licensekeys!event_tags     licensestate-malformed bwlimited expiresoon15 expiresoon30 expiresoon60 expiresoon license-rejected-unauthorized-ts license-rejected-authorized-ts ssltpslimited tpslimited license-rejected-unauthorized license-rejected-authorized license-graceperiodexpired license-timedout-unauthorized license-timedout-authorized licensestate-write-failed license-timedout-unauthorized-ts license-timedout-authorized-ts license-explicitlydisabled-ts expired licensecorrupt license-unauthorized license-graceperiodexpired-ts
+        type!licensekeys!object_names   *
+    path: /opt/zeus/zxtm/conf/events/lbaas_event
+
+-   content: |
         type!faulttolerance!event_tags	allmachinesok
         actions	sync-cluster
     path: /opt/zeus/zxtm/conf/events/allmachinesok
@@ -849,7 +882,7 @@ write_files:
             url = "https://%s:9070/api/tm/3.5/config/active/extra_files/last_update" % (
                 remote_hostname
             )
-            last_update = requests.get(url, auth=('admin', '{1}'), verify=False).text
+            last_update = requests.get(url, auth=('admin', '{3}'), verify=False).text
             return int(last_update.strip())
 
         def main():
@@ -918,40 +951,45 @@ write_files:
 "dGgiKSBcCiAgICAgICAgb3IgICBwYXJhbWV0ZXIua2V5LnN0YXJ0c3dpdGgoImFwcGxpYW5jZSFyZ"
 "XR1cm5fcGF0aCIpOgogICAgICAgICAgICBzZXR0aW5nc19jb25maWdbcGFyYW1ldGVyLmtleV0gPS"
 "BwYXJhbWV0ZXIudmFsdWVfc3RyCiAgICAgICAgZWxpZiBwYXJhbWV0ZXIucHJlZml4IGluIFsgJ2F"
-"wcGxpYW5jZScsICdyZXN0JywgJ2NvbnRyb2wnIF06CiAgICAgICAgICAgIGdsb2JhbF9jb25maWdb"
-"cGFyYW1ldGVyLmtleV0gPSBwYXJhbWV0ZXIudmFsdWVfc3RyCiAgICAgICAgZWxpZiBwYXJhbWV0Z"
-"XIua2V5IGluIFsgJ2FjY2VzcycgXToKICAgICAgICAgICAgc2VjdXJpdHlfY29uZmlnW3BhcmFtZX"
-"Rlci5rZXldID0gcGFyYW1ldGVyLnZhbHVlX3N0cgogICAgZ2xvYmFsX2NvbmZpZy5hcHBseSgpCiA"
-"gICBzZXR0aW5nc19jb25maWcuYXBwbHkoKQogICAgc2VjdXJpdHlfY29uZmlnLmFwcGx5KCkKICAg"
-"IG9zLnJlbW92ZSgiJXMvenh0bS9nbG9iYWwuY2ZnIiAlIFpFVVNIT01FKQogICAgb3MucmVuYW1lK"
-"AogICAgICAgICIlcy96eHRtL2NvbmYvenh0bXMvKG5vbmUpIiAlIFpFVVNIT01FLCAKICAgICAgIC"
-"AiJXMvenh0bS9jb25mL3p4dG1zLyVzIiAlIChaRVVTSE9NRSwgdXNlcl9kYXRhWydob3N0bmFtZSd"
-"dKQogICAgKQogICAgb3Muc3ltbGluaygKICAgICAgICAiJXMvenh0bS9jb25mL3p4dG1zLyVzIiAl"
-"IChaRVVTSE9NRSwgdXNlcl9kYXRhWydob3N0bmFtZSddKSwgCiAgICAgICAgIiVzL3p4dG0vZ2xvY"
-"mFsLmNmZyIgJSBaRVVTSE9NRQogICAgKQogICAgY2FsbChbICIlcy96eHRtL2Jpbi9zeXNjb25maW"
-"ciICUgWkVVU0hPTUUsICItLWFwcGx5IiBdKQogICAgY2FsbCgiJXMvc3RhcnQtemV1cyIgJSBaRVV"
-"TSE9NRSkKICAgIGlmIG5ld191c2VyIGlzIG5vdCBOb25lOgogICAgICAgIHVzZXJfcHJvYyA9IFBv"
-"cGVuKAogICAgICAgICAgICBbIiVzL3p4dG0vYmluL3pjbGkiICUgWkVVU0hPTUVdLAogICAgICAgI"
-"CAgICBzdGRvdXQ9UElQRSwgc3RkaW49UElQRSwgc3RkZXJyPVNURE9VVAogICAgICAgICkKICAgIC"
-"AgICB1c2VyX3Byb2MuY29tbXVuaWNhdGUoaW5wdXQ9IlVzZXJzLmFkZFVzZXIgJXMsICVzLCAlcyI"
-"gJSAoCiAgICAgICAgICAgIG5ld191c2VyWyd1c2VybmFtZSddLCBuZXdfdXNlclsncGFzc3dvcmQn"
-"XSwgbmV3X3VzZXJbJ2dyb3VwJ10KICAgICAgICApKVswXQogICAgaWYgdXNlcl9kYXRhWydjbHVzd"
-"GVyX2pvaW5fZGF0YSddIGlzIG5vdCBOb25lOgogICAgICAgIHdpdGggb3BlbigiL3RtcC9yZXBsYX"
-"lfZGF0YSIsICJ3IikgYXMgcmVwbGF5X2ZpbGU6CiAgICAgICAgICAgIHJlcGxheV9maWxlLndyaXR"
-"lKHVzZXJfZGF0YVsnY2x1c3Rlcl9qb2luX2RhdGEnXSkKICAgICAgICBpZiB1c2VyX2RhdGFbJ2Ns"
-"dXN0ZXJfdGFyZ2V0J10gaXMgbm90IE5vbmU6CiAgICAgICAgICAgIHMgPSBzb2NrZXQuc29ja2V0K"
-"HNvY2tldC5BRl9JTkVULCBzb2NrZXQuU09DS19TVFJFQU0pCiAgICAgICAgICAgIHMuc2V0dGltZW"
-"91dCgzKQogICAgICAgICAgICBmb3IgXyBpbiB4cmFuZ2UoNjApOgogICAgICAgICAgICAgICAgdHJ"
-"5OgogICAgICAgICAgICAgICAgICAgIHMuY29ubmVjdCgodXNlcl9kYXRhWydjbHVzdGVyX3Rhcmdl"
-"dCddLCA5MDcwKSkKICAgICAgICAgICAgICAgIGV4Y2VwdCBzb2NrZXQuZXJyb3I6CiAgICAgICAgI"
-"CAgICAgICAgICAgc2xlZXAoMikKICAgICAgICAgICAgICAgIGV4Y2VwdCBzb2NrZXQuZ2FpZXJyb3"
-"I6CiAgICAgICAgICAgICAgICAgICAgYnJlYWsKICAgICAgICAgICAgcy5jbG9zZSgpCiAgICAgICA"
-"gY2FsbChbICIlcy96eHRtL2NvbmZpZ3VyZSIgJSBaRVVTSE9NRSwgIi0tcmVwbGF5LWZyb209L3Rt"
-"cC9yZXBsYXlfZGF0YSIgXSkKCgppZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgbWFpbigpC"
-"g=="
+"wcGxpYW5jZScsICdyZXN0JywgJ2NvbnRyb2wnLCAnc25tcCcgXToKICAgICAgICAgICAgZ2xvYmFs"
+"X2NvbmZpZ1twYXJhbWV0ZXIua2V5XSA9IHBhcmFtZXRlci52YWx1ZV9zdHIKICAgICAgICBlbGlmI"
+"HBhcmFtZXRlci5rZXkgaW4gWyAnYWNjZXNzJyBdOgogICAgICAgICAgICBzZWN1cml0eV9jb25maW"
+"dbcGFyYW1ldGVyLmtleV0gPSBwYXJhbWV0ZXIudmFsdWVfc3RyCiAgICBnbG9iYWxfY29uZmlnLmF"
+"wcGx5KCkKICAgIHNldHRpbmdzX2NvbmZpZy5hcHBseSgpCiAgICBzZWN1cml0eV9jb25maWcuYXBw"
+"bHkoKQogICAgb3MucmVtb3ZlKCIlcy96eHRtL2dsb2JhbC5jZmciICUgWkVVU0hPTUUpCiAgICBvc"
+"y5yZW5hbWUoCiAgICAgICAgIiVzL3p4dG0vY29uZi96eHRtcy8obm9uZSkiICUgWkVVU0hPTUUsIA"
+"ogICAgICAgICIlcy96eHRtL2NvbmYvenh0bXMvJXMiICUgKFpFVVNIT01FLCB1c2VyX2RhdGFbJ2h"
+"vc3RuYW1lJ10pCiAgICApCiAgICBvcy5zeW1saW5rKAogICAgICAgICIlcy96eHRtL2NvbmYvenh0"
+"bXMvJXMiICUgKFpFVVNIT01FLCB1c2VyX2RhdGFbJ2hvc3RuYW1lJ10pLCAKICAgICAgICAiJXMve"
+"nh0bS9nbG9iYWwuY2ZnIiAlIFpFVVNIT01FCiAgICApCiAgICBjYWxsKFsgIiVzL3p4dG0vYmluL3"
+"N5c2NvbmZpZyIgJSBaRVVTSE9NRSwgIi0tYXBwbHkiIF0pCiAgICBjYWxsKCIlcy9zdGFydC16ZXV"
+"zIiAlIFpFVVNIT01FKQogICAgaWYgbmV3X3VzZXIgaXMgbm90IE5vbmU6CiAgICAgICAgdXNlcl9w"
+"cm9jID0gUG9wZW4oCiAgICAgICAgICAgIFsiJXMvenh0bS9iaW4vemNsaSIgJSBaRVVTSE9NRV0sC"
+"iAgICAgICAgICAgIHN0ZG91dD1QSVBFLCBzdGRpbj1QSVBFLCBzdGRlcnI9U1RET1VUCiAgICAgIC"
+"AgKQogICAgICAgIHVzZXJfcHJvYy5jb21tdW5pY2F0ZShpbnB1dD0iVXNlcnMuYWRkVXNlciAlcyw"
+"gJXMsICVzIiAlICgKICAgICAgICAgICAgbmV3X3VzZXJbJ3VzZXJuYW1lJ10sIG5ld191c2VyWydw"
+"YXNzd29yZCddLCBuZXdfdXNlclsnZ3JvdXAnXQogICAgICAgICkpWzBdCiAgICBpZiB1c2VyX2Rhd"
+"GFbJ2NsdXN0ZXJfam9pbl9kYXRhJ10gaXMgbm90IE5vbmU6CiAgICAgICAgd2l0aCBvcGVuKCIvdG"
+"1wL3JlcGxheV9kYXRhIiwgInciKSBhcyByZXBsYXlfZmlsZToKICAgICAgICAgICAgcmVwbGF5X2Z"
+"pbGUud3JpdGUodXNlcl9kYXRhWydjbHVzdGVyX2pvaW5fZGF0YSddKQogICAgICAgIGlmIHVzZXJf"
+"ZGF0YVsnY2x1c3Rlcl90YXJnZXQnXSBpcyBub3QgTm9uZToKICAgICAgICAgICAgcyA9IHNvY2tld"
+"C5zb2NrZXQoc29ja2V0LkFGX0lORVQsIHNvY2tldC5TT0NLX1NUUkVBTSkKICAgICAgICAgICAgcy"
+"5zZXR0aW1lb3V0KDMpCiAgICAgICAgICAgIGZvciBfIGluIHhyYW5nZSg2MCk6CiAgICAgICAgICA"
+"gICAgICB0cnk6CiAgICAgICAgICAgICAgICAgICAgcy5jb25uZWN0KCh1c2VyX2RhdGFbJ2NsdXN0"
+"ZXJfdGFyZ2V0J10sIDkwNzApKQogICAgICAgICAgICAgICAgZXhjZXB0IHNvY2tldC5lcnJvcjoKI"
+"CAgICAgICAgICAgICAgICAgICBzbGVlcCgyKQogICAgICAgICAgICAgICAgZXhjZXB0IHNvY2tldC"
+"5nYWllcnJvcjoKICAgICAgICAgICAgICAgICAgICBicmVhawogICAgICAgICAgICBzLmNsb3NlKCk"
+"KICAgICAgICBjYWxsKFsgIiVzL3p4dG0vY29uZmlndXJlIiAlIFpFVVNIT01FLCAiLS1yZXBsYXkt"
+"ZnJvbT0vdG1wL3JlcGxheV9kYXRhIiBdKQoKCmlmIF9fbmFtZV9fID09ICJfX21haW5fXyI6CiAgI"
+"CBtYWluKCkK"
 """
     path: /root/configure.py
 
 runcmd:
 -   [ "python", "/root/configure.py" ]
-    """.format(base64.b64encode(json.dumps(user_data)), user_data['password']))
+    """.format(
+        base64.b64encode(json.dumps(user_data)),
+        cfg.CONF.vtm_settings.snmp_community,
+        cfg.CONF.vtm_settings.snmp_traphost,
+        user_data['password']
+    ))
