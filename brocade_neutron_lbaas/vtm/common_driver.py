@@ -232,15 +232,7 @@ class vTMDeviceDriverCommon(object):
                 }
             )
         # Configure session persistence if required...
-        if pool.lb_algorithm == "SOURCE_IP":
-            # vTM has no source IP LB algorithm, so simulate it with
-            # round-robin loadbalancing and source IP session persistence
-            persistence_config = {"properties": {"basic": {"type": "ip"}}}
-            vtm.persistence_class.create(
-                pool.id, config=persistence_config
-            )
-            pool_config['properties']['basic']['persistence_class'] = pool.id
-        elif pool.sessionpersistence:
+        if pool.sessionpersistence:
             # Create and apply persistence class if necessary
             persistence_config = {"properties": {
                 "basic": {
@@ -250,6 +242,14 @@ class vTMDeviceDriverCommon(object):
             if pool.sessionpersistence.type == "APP_COOKIE":
                 persistence_config['properties']['basic']['cookie'] = \
                     pool.sessionpersistence.cookie_name
+            vtm.persistence_class.create(
+                pool.id, config=persistence_config
+            )
+            pool_config['properties']['basic']['persistence_class'] = pool.id
+        elif pool.lb_algorithm == "SOURCE_IP":
+            # vTM has no source IP LB algorithm, so simulate it with
+            # round-robin loadbalancing and source IP session persistence
+            persistence_config = {"properties": {"basic": {"type": "ip"}}}
             vtm.persistence_class.create(
                 pool.id, config=persistence_config
             )

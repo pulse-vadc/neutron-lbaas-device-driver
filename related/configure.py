@@ -79,6 +79,9 @@ def main():
             settings_config[parameter.key] = parameter.value_str
         elif parameter.key in [ 'developer_mode_accepted', 'nameip' ]:
             global_config[parameter.key] = parameter.value_str
+        elif parameter.key.startswith("appliance!returnpath") \
+        or   parameter.key.startswith("appliance!return_path"):
+            settings_config[parameter.key] = parameter.value_str
         elif parameter.prefix in [ 'appliance', 'rest', 'control' ]:
             global_config[parameter.key] = parameter.value_str
         elif parameter.key in [ 'access' ]:

@@ -32,6 +32,8 @@ lbaas_setting_opts = [
                 'Deploy secondary instances on different compute node. '
                 'DO NOT set to True if there is only one compute node '
                 '(e.g. DevStack)')),
+    cfg.StrOpt('availability_zone', default=None, help=_(
+               'AZ to deploy instances into')),
     cfg.ListOpt('configuration_source_ips', help=_(
                 'List of IPs from which API calls can be made')),
     cfg.StrOpt('connection_limit_mode', default="requests_per_sec", help=_(
@@ -112,7 +114,13 @@ vtm_setting_opts = [
                help=_('Password of vTM admin account')),
     cfg.IntOpt('rest_port', default=9070,
                help=_('TCP port that the vTM REST daemon listens on')),
-    cfg.StrOpt('timezone', default="Europe/London",
+    cfg.StrOpt('snmp_community',
+               help=_('Community string for SNMP requests')),
+    cfg.BoolOpt('snmp_enabled', default=True,
+                help=_('Allow SNMP requests/traps on the management network')),
+    cfg.ListOpt('snmp_allow_from',
+               help=_('List of CIDRs from which SNMP requests can be received')),
+    cfg.StrOpt('timezone', default="UTC",
                help=_('Timezone to set vTM clock to')),
     cfg.StrOpt('username', default="admin",
                help=_('Username for vTM admin account'))

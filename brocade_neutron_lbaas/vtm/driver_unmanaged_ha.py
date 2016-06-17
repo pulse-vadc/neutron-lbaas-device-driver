@@ -72,11 +72,11 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
             vtm.tip_group.create(lb.id, config=tip_config)
             if not old or lb.vip_address != old.vip_address:
                 for hostname in hostnames:
-                    port_id = self.openstack_connector.get_server_port(
+                    port_ids = self.openstack_connector.get_server_port_ids(
                         hostname
                     )
                     self.openstack_connector.add_ip_to_ports(
-                        lb.vip_address, [port_id]
+                        lb.vip_address, port_ids
                     )
             LOG.debug(_("\nupdate_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
@@ -107,11 +107,11 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                     self._destroy_vtm(hostnames, lb)
                 else:
                     for hostname in hostnames:
-                        port_id = self.openstack_connector.get_server_port(
+                        port_ids = self.openstack_connector.get_server_port_ids(
                             hostname
                         )
                         self.openstack_connector.delete_ip_from_ports(
-                            lb.vip_address, [port_id]
+                            lb.vip_address, port_ids
                         )
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostnames = self._get_hostname(lb.id)
@@ -128,6 +128,12 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
 
     def _get_hostname(self, id):
         return ("vtm-%s-pri" % (id), "vtm-%s-sec" % (id))
+
+    def _attach_subnet_port(self, vtm, hostnames, lb):
+        for hostname in hostnames:
+            super(BrocadeAdxDeviceDriverV2, self)._attach_subnet_port(
+                vtm, hostname, lb
+            )
 
     def _spawn_vtm(self, hostnames, lb):
         """
@@ -272,7 +278,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                     instances=vms,
                     security_groups=security_groups,
                     ports=port_ids
-                )   
+                )
                 raise Exception(
                     "vTM instance %s failed to boot... Timed out" % (host)
                 )
@@ -295,6 +301,9 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
 
 
 class PollInstance(Thread):
+    class ConnectivityTestFailedError(Exception):
+        pass
+
     def __init__(self, instance, hostname, services_director, *args, **kwargs):
         self.instance = instance
         self.hostname = hostname
@@ -314,10 +323,10 @@ class PollInstance(Thread):
             cfg.CONF.services_director_settings.username,
             cfg.CONF.services_director_settings.password
         )
-        for counter in xrange(50):
+        for counter in xrange(100):
             try:
                 if not vtm.test_connectivity():
-                    raise Exception("")
+                    raise self.ConnectivityTestFailedError()
                 self.instance.rest_enabled = True
                 self.instance.license_name = \
                     cfg.CONF.services_director_settings.fla_license
@@ -325,7 +334,7 @@ class PollInstance(Thread):
                 sleep(5)  # Needed to ensure TIP groups are always created
                 self._return = True
                 break
-            except Exception:
+            except self.ConnectivityTestFailedError:
                 pass
             sleep(5)
 

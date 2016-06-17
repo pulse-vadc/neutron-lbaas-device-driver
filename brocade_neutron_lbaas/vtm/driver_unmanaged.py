@@ -76,6 +76,10 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 if not self.openstack_connector.vtm_exists(hostname):
                     self._spawn_vtm(hostname, lb)
                     sleep(5)
+                elif not self.openstack_connector.vtm_has_subnet_port(
+                    hostname, lb):
+                    vtm = self._get_vtm(hostname)
+                    self._attach_subnet_port(vtm, hostname, lb)
                 self.update_loadbalancer(lb, None)
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(lb.id)
@@ -109,11 +113,11 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 vtm.tip_group.create(lb.id, config=tip_config)
                 self._touch_last_modified_timestamp(vtm)
                 if not old or lb.vip_address != old.vip_address:
-                    port_id = self.openstack_connector.get_server_port(
+                    port_ids = self.openstack_connector.get_server_port_ids(
                         hostname
                     )
                     self.openstack_connector.add_ip_to_ports(
-                        lb.vip_address, [port_id]
+                        lb.vip_address, port_ids
                     )
             LOG.debug(_("\nupdate_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
@@ -144,11 +148,11 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                     ))
                     self._destroy_vtm(hostname, lb)
                 else:
-                    port_id = self.openstack_connector.get_server_port(
+                    port_ids = self.openstack_connector.get_server_port_ids(
                         hostname
                     )
                     self.openstack_connector.delete_ip_from_ports(
-                        lb.vip_address, [port_id]
+                        lb.vip_address, port_ids
                     )
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(lb.id)
@@ -414,6 +418,34 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         network_id = self.openstack_connector.get_network_for_subnet(subnet_id)
         if network_id == cfg.CONF.lbaas_settings.management_network:
             raise Exception("Specified subnet is part of management network")
+
+    def _attach_subnet_port(self, vtm, hostname, lb):
+        # Create and attach a new Neutron port to the instance
+        port = self.openstack_connector.attach_port(hostname, lb)
+        # Configure the interface on the vTM
+        tm_settings = vtm.traffic_manager.get(hostname)
+        next_if = "eth{}".format(len(tm_settings.appliance__if))
+        tm_settings.appliance__if.append({
+            "name": next_if,
+            "mtu": cfg.CONF.vtm_settings.mtu
+        })
+        tm_settings.appliance__ip.append({
+            "name": next_if,
+            "addr": port['fixed_ips'][0]['ip_address'],
+            "mask": self.openstack_connector.get_subnet_netmask(
+                lb.vip_subnet_id),
+            "isexternal":False
+        })
+        tm_settings.update()
+        # Configure return-path routing for the new port
+        ip, mac = self.openstack_connector.get_subnet_gateway(
+            lb.vip_subnet_id
+        )
+        return_paths = vtm.global_settings.ip__appliance_returnpath
+        if {"mac": mac, "ipv4": ip} not in return_paths:
+            return_paths.append({"mac": mac, "ipv4": ip})
+            vtm.global_settings.ip__appliance_returnpath = return_paths
+            vtm.global_settings.update()
 
     def _spawn_vtm(self, hostname, lb):
         """

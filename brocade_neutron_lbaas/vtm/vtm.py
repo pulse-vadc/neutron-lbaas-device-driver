@@ -274,7 +274,7 @@ GlobalSettings = ConfigObjectFactory(
 )
 
 SecuritySettings = ConfigObjectFactory(
-    "SecuritySettings", ["access"], vTMConfigObject
+    "SecuritySettings", [], vTMConfigObject
 )
 
 
@@ -482,18 +482,23 @@ class vTM(ProductInstance):
         # TODO: have object-specific stats available through the object itself
         self.stats_url = "%s/status/local_tm/statistics" % base_url
         self.statistics = Statistics(self.stats_url, self.http_session)
+        # Initialize config object that only exist as single entities:
+        global_conn = self.get_object_connector(
+            GlobalSettings, "global_settings"
+        )
+        security_conn = self.get_object_connector(SecuritySettings, "security")
         if initialize_config:
-            # Initialize config object that only exist as single entities:
-            #   Global settings....
-            conn = self.get_object_connector(GlobalSettings, "global_settings")
             self.global_settings = GlobalSettings(
-                "GlobalSettings", config=conn()
+                "GlobalSettings", config=global_conn()
             )
-            self.global_settings.connector = conn
-            #   Security
-            conn = self.get_object_connector(SecuritySettings, "security")
-            self.security = SecuritySettings("SecuritySettings", config=conn())
-            self.security.connector = conn
+            self.security = SecuritySettings(
+                "SecuritySettings", config=security_conn()
+            )
+        else:
+            self.global_settings = GlobalSettings("GlobalSettings")
+            self.security = SecuritySettings("SecuritySettings")
+        self.global_settings.connector = global_conn
+        self.security.connector = security_conn
 
     def get_nodes_in_cluster(self):
         response = self.http_session.get("%s/traffic_managers" % (

@@ -232,14 +232,17 @@ class OpenStackInterface(object):
             network_id = subnet['subnet']['network_id']
         else:
             network_id = cfg.CONF.lbaas_settings.management_network
-        port = neutron.create_port(
-            {"port": {
-                "admin_state_up": True,
-                "network_id": network_id,
-                "tenant_id": self.lbaas_project_id,
-                "name": "%s-%s" % ("mgmt" if mgmt_port else "data", hostname)
-            }}
-        )['port']
+        port_config = {"port": {
+            "admin_state_up": True,
+            "network_id": network_id,
+            "tenant_id": self.lbaas_project_id,
+            "name": "%s-%s" % ("mgmt" if mgmt_port else "data", hostname)
+        }}
+        if mgmt_port is False:
+            port_config['port']['fixed_ips'] = [
+                {'subnet_id': lb.vip_subnet_id}
+            ]
+        port = neutron.create_port(port_config)['port']
 
         if cfg.CONF.lbaas_settings.deployment_model == "PER_LOADBALANCER":
             sec_grp_uuid = lb.id
@@ -277,6 +280,36 @@ class OpenStackInterface(object):
             }}
         )
         return(port, security_group, mgmt_ip)
+
+    def vtm_has_subnet_port(self, hostname, lb):
+        hostname = hostname[0] if isinstance(hostname, tuple) else hostname
+        ports = self.get_server_ports(hostname)
+        for port in ports:
+            for fixed_ip in port['fixed_ips']:
+                if fixed_ip['subnet_id'] == lb.vip_subnet_id:
+                    return True
+        return False
+
+    def attach_port(self, hostname, lb):
+        server_id = self.get_server_id_from_hostname(hostname)
+        sec_grp_id = self.get_security_group_id(
+            "lbaas-{}".format(lb.tenant_id)
+        )
+        port, junk, junk = self.create_port(
+            lb, hostname, security_group=sec_grp_id
+        )
+        self.attach_port_to_instance(server_id, port['id'])
+        return port
+
+    def get_security_group_id(self, sec_grp_name):
+        neutron = self.get_neutron_client()
+        sec_grps = neutron.list_security_groups(name=sec_grp_name)
+        try:
+            return sec_grps['security_groups'][0]['id']
+        except IndexError:
+            raise Exception(
+                _("Security group {} not found".format(sec_grp_name))
+            )
 
     def create_lb_security_group(self, tenant_id, uuid, mgmt_port=False,
                                  mgmt_label=False, cluster=False):
@@ -444,6 +477,9 @@ class OpenStackInterface(object):
             "networks": nics,
             "config_drive": True
         }}
+        if cfg.CONF.lbaas_settings.availability_zone is not None:
+            body['server']['availability_zone'] = \
+                cfg.CONF.lbaas_settings.availability_zone
         if avoid_host_of is not None:
             body['os:scheduler_hints'] = {
                 "different_host": [avoid_host_of]
@@ -459,7 +495,7 @@ class OpenStackInterface(object):
                     response.status_code, response.text
                 ))
         except Exception as e:
-            LOG.error(_("\nError creating vTM instance: %s" % e))
+            raise Exception(_("\nError creating vTM instance: %s" % e))
         return response.json()['server']
 
     def get_server(self, server_id):
@@ -471,6 +507,19 @@ class OpenStackInterface(object):
         if response.status_code != 200:
             raise Exception("Server Not found")
         return response.json()['server']
+
+    def attach_port_to_instance(self, server_id, port_id):
+        token = self.get_auth_token()
+        response = requests.post(
+            "%s/servers/%s/os-interface" % (self.nova_endpoint, server_id),
+            data=json.dumps({"interfaceAttachment": { "port_id": port_id}}),
+            headers={"X-Auth-Token": token, "Content-Type": "application/json"}
+        )
+        if response.status_code != 200:
+            raise Exception(
+                "Unable to attach port '{}' to instance '{}': {}".format(
+                    port_id, server_id, response.text
+            ))
 
     def get_mgmt_ip(self, hostname):
         neutron = self.get_neutron_client()
@@ -494,17 +543,24 @@ class OpenStackInterface(object):
         if response.status_code != 202:
             raise Exception("Failed to lock server %s" % server_id)
 
-    def get_server_port(self, hostname):
+    def get_server_ports(self, hostname):
         """
         Gets the Neutron ID of a vTM's data port.
         """
         neutron = self.get_neutron_client()
         server_id = self.get_server_id_from_hostname(hostname)
-        ports = neutron.list_ports(device_id=server_id)['ports']
-        for port in ports:
-            if not port['name'].startswith("mgmt"):
-                return port['id']
-        raise Exception("No data port found for %s" % hostname)
+        all_ports = neutron.list_ports(device_id=server_id)['ports']
+        data_ports = [
+            port for port in all_ports
+            if not port['name'].startswith("mgmt")
+        ]
+        if data_ports:
+            return data_ports
+        raise Exception("No data ports found for %s" % hostname)
+
+    def get_server_port_ids(self, hostname):
+        ports = self.get_server_ports(hostname)
+        return [port['id'] for port in ports]
 
     def get_server_id_from_hostname(self, hostname):
         """
@@ -512,13 +568,13 @@ class OpenStackInterface(object):
         """
         token = self.get_auth_token()
         response = requests.get(
-            "%s/servers" % self.nova_endpoint,
+            "%s/servers?name=%s" % (self.nova_endpoint, hostname),
             headers={"X-Auth-Token": token}
         )
-        for server in response.json()['servers']:
-            if server['name'] == hostname:
-                return server['id']
-        raise Exception("Server not found")
+        try:
+            return response.json()['servers'][0]['id']
+        except:
+            raise Exception("Server not found")
 
     def delete_server(self, server_id):
         """
@@ -529,6 +585,20 @@ class OpenStackInterface(object):
         requests.delete(
             "%s/servers/%s" % (self.nova_endpoint, server_id),
             headers={"X-Auth-Token": token}
+        )
+
+    def get_subnet_gateway(self, subnet_id):
+        neutron = self.get_neutron_client()
+        subnet = neutron.show_subnet(subnet_id)['subnet']
+        ports = neutron.list_ports(network_id=subnet['network_id'])['ports']
+        for port in ports:
+            for fixed_ip in port['fixed_ips']:
+                if fixed_ip['ip_address'] == subnet['gateway_ip']:
+                    return (subnet['gateway_ip'], port['mac_address'])
+        raise Exception(
+            "No port for gateway IP '{}' found on network '{}'".format(
+                gateway_ip, network_id
+            )
         )
 
     def get_neutron_client(self):
@@ -571,6 +641,11 @@ class OpenStackInterface(object):
         keystone_client = self.get_keystone_client(lbaas_tenant=lbaas_tenant)
         return keystone_client.auth_token
 
+    def get_subnet_netmask(self, subnet_id):
+        neutron = self.get_neutron_client()
+        subnet = neutron.show_subnet(subnet_id)['subnet']
+        return self.get_netmask(subnet['cidr'])
+
     def get_netmask(self, cidr):
         mask = int(cidr.split("/")[1])
         bits = 0xffffffff ^ (1 << 32 - mask) - 1
@@ -603,9 +678,14 @@ class OpenStackInterface(object):
             "appliance!ssh!port": "2222",
             "rest!bindips": bind_ip,
             "control!bindip": bind_ip if cluster_data else "127.0.0.1",
+            "appliance!return_path_routing_enabled": "yes",
             "appliance!nameservers":
                 " ".join(cfg.CONF.vtm_settings.nameservers)
         }
+        # Set return-path routes
+        gateway_ip, gateway_mac = self.get_subnet_gateway(data_subnet['id'])
+        replay_data['appliance!returnpath!%s!ipv4' % gateway_mac] = gateway_ip
+        # GUI user settings
         if cfg.CONF.vtm_settings.gui_access is True:
             replay_data['monitor_user'] = "monitor %s" % "password"
         else:
@@ -834,37 +914,41 @@ write_files:
 "aWdbcGFyYW1ldGVyLmtleV0gPSBwYXJhbWV0ZXIudmFsdWVfc3RyCiAgICAgICAgZWxpZiBwYXJhb"
 "WV0ZXIua2V5IGluIFsgJ2RldmVsb3Blcl9tb2RlX2FjY2VwdGVkJywgJ25hbWVpcCcgXToKICAgIC"
 "AgICAgICAgZ2xvYmFsX2NvbmZpZ1twYXJhbWV0ZXIua2V5XSA9IHBhcmFtZXRlci52YWx1ZV9zdHI"
-"KICAgICAgICBlbGlmIHBhcmFtZXRlci5wcmVmaXggaW4gWyAnYXBwbGlhbmNlJywgJ3Jlc3QnLCAn"
-"Y29udHJvbCcgXToKICAgICAgICAgICAgZ2xvYmFsX2NvbmZpZ1twYXJhbWV0ZXIua2V5XSA9IHBhc"
-"mFtZXRlci52YWx1ZV9zdHIKICAgICAgICBlbGlmIHBhcmFtZXRlci5rZXkgaW4gWyAnYWNjZXNzJy"
-"BdOgogICAgICAgICAgICBzZWN1cml0eV9jb25maWdbcGFyYW1ldGVyLmtleV0gPSBwYXJhbWV0ZXI"
-"udmFsdWVfc3RyCiAgICBnbG9iYWxfY29uZmlnLmFwcGx5KCkKICAgIHNldHRpbmdzX2NvbmZpZy5h"
-"cHBseSgpCiAgICBzZWN1cml0eV9jb25maWcuYXBwbHkoKQogICAgb3MucmVtb3ZlKCIlcy96eHRtL"
-"2dsb2JhbC5jZmciICUgWkVVU0hPTUUpCiAgICBvcy5yZW5hbWUoCiAgICAgICAgIiVzL3p4dG0vY2"
-"9uZi96eHRtcy8obm9uZSkiICUgWkVVU0hPTUUsIAogICAgICAgICIlcy96eHRtL2NvbmYvenh0bXM"
-"vJXMiICUgKFpFVVNIT01FLCB1c2VyX2RhdGFbJ2hvc3RuYW1lJ10pCiAgICApCiAgICBvcy5zeW1s"
-"aW5rKAogICAgICAgICIlcy96eHRtL2NvbmYvenh0bXMvJXMiICUgKFpFVVNIT01FLCB1c2VyX2Rhd"
-"GFbJ2hvc3RuYW1lJ10pLCAKICAgICAgICAiJXMvenh0bS9nbG9iYWwuY2ZnIiAlIFpFVVNIT01FCi"
-"AgICApCiAgICBjYWxsKFsgIiVzL3p4dG0vYmluL3N5c2NvbmZpZyIgJSBaRVVTSE9NRSwgIi0tYXB"
-"wbHkiIF0pCiAgICBjYWxsKCIlcy9zdGFydC16ZXVzIiAlIFpFVVNIT01FKQogICAgaWYgbmV3X3Vz"
-"ZXIgaXMgbm90IE5vbmU6CiAgICAgICAgdXNlcl9wcm9jID0gUG9wZW4oCiAgICAgICAgICAgIFsiJ"
-"XMvenh0bS9iaW4vemNsaSIgJSBaRVVTSE9NRV0sCiAgICAgICAgICAgIHN0ZG91dD1QSVBFLCBzdG"
-"Rpbj1QSVBFLCBzdGRlcnI9U1RET1VUCiAgICAgICAgKQogICAgICAgIHVzZXJfcHJvYy5jb21tdW5"
-"pY2F0ZShpbnB1dD0iVXNlcnMuYWRkVXNlciAlcywgJXMsICVzIiAlICgKICAgICAgICAgICAgbmV3"
-"X3VzZXJbJ3VzZXJuYW1lJ10sIG5ld191c2VyWydwYXNzd29yZCddLCBuZXdfdXNlclsnZ3JvdXAnX"
-"QogICAgICAgICkpWzBdCiAgICBpZiB1c2VyX2RhdGFbJ2NsdXN0ZXJfam9pbl9kYXRhJ10gaXMgbm"
-"90IE5vbmU6CiAgICAgICAgd2l0aCBvcGVuKCIvdG1wL3JlcGxheV9kYXRhIiwgInciKSBhcyByZXB"
-"sYXlfZmlsZToKICAgICAgICAgICAgcmVwbGF5X2ZpbGUud3JpdGUodXNlcl9kYXRhWydjbHVzdGVy"
-"X2pvaW5fZGF0YSddKQogICAgICAgIGlmIHVzZXJfZGF0YVsnY2x1c3Rlcl90YXJnZXQnXSBpcyBub"
-"3QgTm9uZToKICAgICAgICAgICAgcyA9IHNvY2tldC5zb2NrZXQoc29ja2V0LkFGX0lORVQsIHNvY2"
-"tldC5TT0NLX1NUUkVBTSkKICAgICAgICAgICAgcy5zZXR0aW1lb3V0KDMpCiAgICAgICAgICAgIGZ"
-"vciBfIGluIHhyYW5nZSg2MCk6CiAgICAgICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICAg"
-"ICAgcy5jb25uZWN0KCh1c2VyX2RhdGFbJ2NsdXN0ZXJfdGFyZ2V0J10sIDkwNzApKQogICAgICAgI"
-"CAgICAgICAgZXhjZXB0IHNvY2tldC5lcnJvcjoKICAgICAgICAgICAgICAgICAgICBzbGVlcCgyKQ"
-"ogICAgICAgICAgICAgICAgZXhjZXB0IHNvY2tldC5nYWllcnJvcjoKICAgICAgICAgICAgICAgICA"
-"gICBicmVhawogICAgICAgICAgICBzLmNsb3NlKCkKICAgICAgICBjYWxsKFsgIiVzL3p4dG0vY29u"
-"ZmlndXJlIiAlIFpFVVNIT01FLCAiLS1yZXBsYXktZnJvbT0vdG1wL3JlcGxheV9kYXRhIiBdKQoKC"
-"mlmIF9fbmFtZV9fID09ICJfX21haW5fXyI6CiAgICBtYWluKCkK"
+"KICAgICAgICBlbGlmIHBhcmFtZXRlci5rZXkuc3RhcnRzd2l0aCgiYXBwbGlhbmNlIXJldHVybnBh"
+"dGgiKSBcCiAgICAgICAgb3IgICBwYXJhbWV0ZXIua2V5LnN0YXJ0c3dpdGgoImFwcGxpYW5jZSFyZ"
+"XR1cm5fcGF0aCIpOgogICAgICAgICAgICBzZXR0aW5nc19jb25maWdbcGFyYW1ldGVyLmtleV0gPS"
+"BwYXJhbWV0ZXIudmFsdWVfc3RyCiAgICAgICAgZWxpZiBwYXJhbWV0ZXIucHJlZml4IGluIFsgJ2F"
+"wcGxpYW5jZScsICdyZXN0JywgJ2NvbnRyb2wnIF06CiAgICAgICAgICAgIGdsb2JhbF9jb25maWdb"
+"cGFyYW1ldGVyLmtleV0gPSBwYXJhbWV0ZXIudmFsdWVfc3RyCiAgICAgICAgZWxpZiBwYXJhbWV0Z"
+"XIua2V5IGluIFsgJ2FjY2VzcycgXToKICAgICAgICAgICAgc2VjdXJpdHlfY29uZmlnW3BhcmFtZX"
+"Rlci5rZXldID0gcGFyYW1ldGVyLnZhbHVlX3N0cgogICAgZ2xvYmFsX2NvbmZpZy5hcHBseSgpCiA"
+"gICBzZXR0aW5nc19jb25maWcuYXBwbHkoKQogICAgc2VjdXJpdHlfY29uZmlnLmFwcGx5KCkKICAg"
+"IG9zLnJlbW92ZSgiJXMvenh0bS9nbG9iYWwuY2ZnIiAlIFpFVVNIT01FKQogICAgb3MucmVuYW1lK"
+"AogICAgICAgICIlcy96eHRtL2NvbmYvenh0bXMvKG5vbmUpIiAlIFpFVVNIT01FLCAKICAgICAgIC"
+"AiJXMvenh0bS9jb25mL3p4dG1zLyVzIiAlIChaRVVTSE9NRSwgdXNlcl9kYXRhWydob3N0bmFtZSd"
+"dKQogICAgKQogICAgb3Muc3ltbGluaygKICAgICAgICAiJXMvenh0bS9jb25mL3p4dG1zLyVzIiAl"
+"IChaRVVTSE9NRSwgdXNlcl9kYXRhWydob3N0bmFtZSddKSwgCiAgICAgICAgIiVzL3p4dG0vZ2xvY"
+"mFsLmNmZyIgJSBaRVVTSE9NRQogICAgKQogICAgY2FsbChbICIlcy96eHRtL2Jpbi9zeXNjb25maW"
+"ciICUgWkVVU0hPTUUsICItLWFwcGx5IiBdKQogICAgY2FsbCgiJXMvc3RhcnQtemV1cyIgJSBaRVV"
+"TSE9NRSkKICAgIGlmIG5ld191c2VyIGlzIG5vdCBOb25lOgogICAgICAgIHVzZXJfcHJvYyA9IFBv"
+"cGVuKAogICAgICAgICAgICBbIiVzL3p4dG0vYmluL3pjbGkiICUgWkVVU0hPTUVdLAogICAgICAgI"
+"CAgICBzdGRvdXQ9UElQRSwgc3RkaW49UElQRSwgc3RkZXJyPVNURE9VVAogICAgICAgICkKICAgIC"
+"AgICB1c2VyX3Byb2MuY29tbXVuaWNhdGUoaW5wdXQ9IlVzZXJzLmFkZFVzZXIgJXMsICVzLCAlcyI"
+"gJSAoCiAgICAgICAgICAgIG5ld191c2VyWyd1c2VybmFtZSddLCBuZXdfdXNlclsncGFzc3dvcmQn"
+"XSwgbmV3X3VzZXJbJ2dyb3VwJ10KICAgICAgICApKVswXQogICAgaWYgdXNlcl9kYXRhWydjbHVzd"
+"GVyX2pvaW5fZGF0YSddIGlzIG5vdCBOb25lOgogICAgICAgIHdpdGggb3BlbigiL3RtcC9yZXBsYX"
+"lfZGF0YSIsICJ3IikgYXMgcmVwbGF5X2ZpbGU6CiAgICAgICAgICAgIHJlcGxheV9maWxlLndyaXR"
+"lKHVzZXJfZGF0YVsnY2x1c3Rlcl9qb2luX2RhdGEnXSkKICAgICAgICBpZiB1c2VyX2RhdGFbJ2Ns"
+"dXN0ZXJfdGFyZ2V0J10gaXMgbm90IE5vbmU6CiAgICAgICAgICAgIHMgPSBzb2NrZXQuc29ja2V0K"
+"HNvY2tldC5BRl9JTkVULCBzb2NrZXQuU09DS19TVFJFQU0pCiAgICAgICAgICAgIHMuc2V0dGltZW"
+"91dCgzKQogICAgICAgICAgICBmb3IgXyBpbiB4cmFuZ2UoNjApOgogICAgICAgICAgICAgICAgdHJ"
+"5OgogICAgICAgICAgICAgICAgICAgIHMuY29ubmVjdCgodXNlcl9kYXRhWydjbHVzdGVyX3Rhcmdl"
+"dCddLCA5MDcwKSkKICAgICAgICAgICAgICAgIGV4Y2VwdCBzb2NrZXQuZXJyb3I6CiAgICAgICAgI"
+"CAgICAgICAgICAgc2xlZXAoMikKICAgICAgICAgICAgICAgIGV4Y2VwdCBzb2NrZXQuZ2FpZXJyb3"
+"I6CiAgICAgICAgICAgICAgICAgICAgYnJlYWsKICAgICAgICAgICAgcy5jbG9zZSgpCiAgICAgICA"
+"gY2FsbChbICIlcy96eHRtL2NvbmZpZ3VyZSIgJSBaRVVTSE9NRSwgIi0tcmVwbGF5LWZyb209L3Rt"
+"cC9yZXBsYXlfZGF0YSIgXSkKCgppZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgbWFpbigpC"
+"g=="
 """
     path: /root/configure.py
 
