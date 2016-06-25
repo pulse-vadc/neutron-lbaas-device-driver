@@ -742,6 +742,9 @@ class OpenStackInterface(object):
         data_subnet = neutron.show_subnet(
             data_port['fixed_ips'][0]['subnet_id']
         )['subnet']
+        mgmt_subnet = neutron.show_subnet(
+            mgmt_port['fixed_ips'][0]['subnet_id']
+        )['subnet']
         # Get bind IP for management services
         if mgmt_port:
             bind_ip = mgmt_port['fixed_ips'][0]['ip_address']
@@ -756,7 +759,7 @@ class OpenStackInterface(object):
             "appliance!hostname": hostname,
             "appliance!licence_agreed": "Yes",
             "rest!port": cfg.CONF.vtm_settings.rest_port,
-            "appliance!gateway": data_subnet['gateway_ip'],
+            "appliance!gateway": mgmt_subnet['gateway_ip'],
             "appliance!if!eth0!autoneg": "Yes",
             "appliance!if!eth0!mtu": cfg.CONF.vtm_settings.mtu,
             "appliance!ip!eth0!isexternal": "No",
@@ -770,7 +773,8 @@ class OpenStackInterface(object):
         }
         # Set return-path routes
         gateway_ip, gateway_mac = self.get_subnet_gateway(data_subnet['id'])
-        replay_data['appliance!returnpath!%s!ipv4' % gateway_mac] = gateway_ip
+        if gateway_ip is not None and gateway_mac is not None:
+            replay_data['appliance!returnpath!%s!ipv4' % gateway_mac] = gateway_ip
         # SNMP configuration
         if cfg.CONF.vtm_settings.snmp_enabled is True:
             replay_data['snmp!enabled'] = "Yes"
@@ -794,9 +798,6 @@ class OpenStackInterface(object):
             if cluster_data:
                 replay_data['access'] += " %s" % cluster_data['peer_addr']
         if mgmt_port:
-            mgmt_subnet = neutron.show_subnet(
-                mgmt_port['fixed_ips'][0]['subnet_id']
-            )['subnet']
             # Add static routes from subnet 'host_routes' fields
             for host_route in mgmt_subnet['host_routes']:
                 dest = "appliance!routes!%s" % host_route['destination'].split("/")[0]
