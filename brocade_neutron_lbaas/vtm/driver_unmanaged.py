@@ -148,6 +148,10 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                     ))
                     self._destroy_vtm(hostname, lb)
                 else:
+                    # Delete subnet port if it's no longer required
+                    if self.openstack_connector.subnet_in_use(lb) is False:
+                        self._detach_subnet_port(vtm, hostname, lb)
+                    # Remove allowed_address_pairs entry from remaining ports
                     port_ids = self.openstack_connector.get_server_port_ids(
                         hostname
                     )
@@ -424,7 +428,17 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         port = self.openstack_connector.attach_port(hostname, lb)
         # Configure the interface on the vTM
         tm_settings = vtm.traffic_manager.get(hostname)
-        next_if = "eth{}".format(len(tm_settings.appliance__if))
+        iface_list = tm_settings.appliance__if
+        # Calculate the interface name that will be used
+        used_iface_numbers = sorted([int(iface['name'][3:]) for iface in iface_list])
+        next_if = None
+        for i, iface in enumerate(used_iface_numbers):
+            if iface > i:
+                next_if = "eth{}".format(i)
+                break
+        if next_if is None:
+            next_if = "eth{}".format(len(iface_list))
+        # Configure the interface on the vTM
         tm_settings.appliance__if.append({
             "name": next_if,
             "mtu": cfg.CONF.vtm_settings.mtu
@@ -446,6 +460,44 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             return_paths.append({"mac": mac, "ipv4": ip})
             vtm.global_settings.ip__appliance_returnpath = return_paths
             vtm.global_settings.update()
+
+    def _detach_subnet_port(self, vtm, hostname, lb):
+        # Detach and delete Neutron port from the instance
+        port_ip_address = self.openstack_connector.detach_port(hostname, lb)
+        tm_settings = vtm.traffic_manager.get(hostname)
+        # Get the name of the interface to delete
+        iface_list = tm_settings.appliance__ip
+        iface_to_delete = None
+        for iface in iface_list:
+            if iface['addr'] == port_ip_address:
+                iface_to_delete = iface['name']
+                break
+        if iface_to_delete is None:
+            raise Exception(_("No interface configuration found"))
+        # Delete the "ip" entry for the interface
+        new_iface_list = [
+            iface for iface in iface_list
+            if iface['name'] != iface_to_delete
+        ]
+        tm_settings.appliance__ip = new_iface_list
+        # Delete the "if" entry for the interface
+        iface_list = tm_settings.appliance__if
+        new_iface_list = [
+            iface for iface in iface_list if iface['name'] != iface_to_delete
+        ]
+        tm_settings.appliance__if = new_iface_list
+        tm_settings.update()
+        # Remove return-path routing for the old port
+        ip, mac = self.openstack_connector.get_subnet_gateway(
+            lb.vip_subnet_id
+        )
+        return_paths = vtm.global_settings.ip__appliance_returnpath
+        new_return_paths = [
+            return_path for return_path in return_paths
+            if return_path['mac'] != mac and return_path['ipv4'] != ip
+        ]
+        vtm.global_settings.ip__appliance_returnpath = new_return_paths
+        vtm.global_settings.update()
 
     def _spawn_vtm(self, hostname, lb):
         """

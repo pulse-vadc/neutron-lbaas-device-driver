@@ -61,15 +61,21 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostnames = self._get_hostname(lb.id)
             vtm = self._get_vtm(hostnames)
+            cluster_nodes = vtm.get_nodes_in_cluster()
             tip_config = {"properties": {
                 "basic": {
                     "enabled": lb.admin_state_up,
                     "ipaddresses": [lb.vip_address],
-                    "machines": vtm.get_nodes_in_cluster(),
+                    "machines": cluster_nodes,
+                    "slaves": [
+                        slave for slave in cluster_nodes 
+                        if slave.endswith("-sec")
+                    ],
                     "note": lb.name
                 }
             }}
             vtm.tip_group.create(lb.id, config=tip_config)
+            self._touch_last_modified_timestamp(vtm)
             if not old or lb.vip_address != old.vip_address:
                 for hostname in hostnames:
                     port_ids = self.openstack_connector.get_server_port_ids(
@@ -99,6 +105,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                 hostnames = self._get_hostname(lb.tenant_id)
                 vtm = self._get_vtm(hostnames)
                 vtm.tip_group.delete(lb.id)
+                self._touch_last_modified_timestamp(vtm)
                 if not vtm.tip_group.list():
                     LOG.debug(
                         _("\ndelete_loadbalancer(%s): "
@@ -106,6 +113,9 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                     )
                     self._destroy_vtm(hostnames, lb)
                 else:
+                    # Delete subnet ports if no longer required
+                    if self.openstack_connector.subnet_in_use(lb) is False:
+                        self._detach_subnet_port(vtm, hostnames, lb)
                     for hostname in hostnames:
                         port_ids = self.openstack_connector.get_server_port_ids(
                             hostname
@@ -130,8 +140,27 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
         return ("vtm-%s-pri" % (id), "vtm-%s-sec" % (id))
 
     def _attach_subnet_port(self, vtm, hostnames, lb):
+        try:
+            for hostname in hostnames:
+                super(BrocadeAdxDeviceDriverV2, self)._attach_subnet_port(
+                    vtm, hostname, lb
+                )
+        except AttributeError:
+            for hostname in hostnames:
+                try:
+                    super(BrocadeAdxDeviceDriverV2, self)._detach_subnet_port(
+                        vtm, hostname, lb
+                    )
+                except:
+                    pass
+            raise Exception(
+                "Failed to add new port to vTMs {} - one of the instances "
+                "may be down.".format(hostnames)
+            )
+
+    def _detach_subnet_port(self, vtm, hostnames, lb):
         for hostname in hostnames:
-            super(BrocadeAdxDeviceDriverV2, self)._attach_subnet_port(
+            super(BrocadeAdxDeviceDriverV2, self)._detach_subnet_port(
                 vtm, hostname, lb
             )
 

@@ -26,7 +26,7 @@ import re
 import requests
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import socket
-from struct import pack
+import struct
 from time import sleep
 
 LOG = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class OpenStackInterface(object):
         self.lbaas_project_id = cfg.CONF.lbaas_settings.lbaas_project_id
         self.lbaas_username = cfg.CONF.lbaas_settings.lbaas_project_username
         # Get Neutron and Nova API endpoints...
-        keystone = self.get_keystone_client()
+        keystone = self.get_keystone_client(lbaas_tenant=True)
         neutron_service = keystone.services.find(name="neutron")
         nova_service = keystone.services.find(name="nova")
         if cfg.CONF.lbaas_settings.keystone_version == "2":
@@ -290,6 +290,16 @@ class OpenStackInterface(object):
                     return True
         return False
 
+    def subnet_in_use(self, lb):
+        neutron = self.get_neutron_client()
+        loadbalancers = neutron.list_loadbalancers(
+            tenant_id=lb.tenant_id,
+            vip_subnet_id=lb.vip_subnet_id
+        )['loadbalancers']
+        if len(loadbalancers) > 1:
+            return True
+        return False
+
     def attach_port(self, hostname, lb):
         server_id = self.get_server_id_from_hostname(hostname)
         sec_grp_id = self.get_security_group_id(
@@ -300,6 +310,20 @@ class OpenStackInterface(object):
         )
         self.attach_port_to_instance(server_id, port['id'])
         return port
+
+    def detach_port(self, hostname, lb):
+        neutron = self.get_neutron_client()
+        server_id = self.get_server_id_from_hostname(hostname)
+        ports = neutron.list_ports(device_id=server_id,)['ports']
+        for port in ports:
+            if port['fixed_ips'][0]['subnet_id'] == lb.vip_subnet_id:
+                self.detach_port_from_instance(server_id, port['id'])
+                neutron.delete_port(port['id'])
+                return port['fixed_ips'][0]['ip_address']
+        raise Exception(_(
+            "No port found for subnet {} on device {}".format(
+                lb.vip_subnet_id, hostname)
+        ))
 
     def get_security_group_id(self, sec_grp_name):
         neutron = self.get_neutron_client()
@@ -322,6 +346,36 @@ class OpenStackInterface(object):
             "tenant_id": self.lbaas_project_id
         }}
         sec_grp = neutron.create_security_group(sec_grp_data)
+        # Add egress rules (CM override the defaults, making them unusable)
+        self.create_security_group_rule(
+            tenant_id,
+            sec_grp['security_group']['id'],
+            port=None,
+            direction="egress",
+            protocol=None
+        )
+       
+        """self.create_security_group_rule(
+            tenant_id,
+            sec_grp['security_group']['id'],
+            port=(1,65535),
+            direction="egress",
+            protocol="tcp"
+        )
+        self.create_security_group_rule(
+            tenant_id,
+            sec_grp['security_group']['id'],
+            port=(1,65535),
+            direction="egress",
+            protocol="udp"
+        )
+        self.create_security_group_rule(
+            tenant_id,
+            sec_grp['security_group']['id'],
+            port="",
+            direction="egress",
+            protocol="icmp"
+        )"""
         # If GUI access is allowed, open up the GUI port
         if cfg.CONF.vtm_settings.gui_access is True and not mgmt_label:
             self.create_security_group_rule(
@@ -390,12 +444,18 @@ class OpenStackInterface(object):
         """
         Creates the designatted rule in a security group.
         """
+        if isinstance(port, tuple):
+            port_min = port[0]
+            port_max = port[1]
+        else:
+            port_min = port
+            port_max = port
         neutron = self.get_neutron_client()
         new_rule = {"security_group_rule": {
             "direction": direction,
-            "port_range_min": port,
+            "port_range_min": port_min,
             "ethertype": "IPv4",
-            "port_range_max": port,
+            "port_range_max": port_max,
             "protocol": protocol,
             "security_group_id": sec_grp_id,
             "tenant_id": self.lbaas_project_id
@@ -529,6 +589,20 @@ class OpenStackInterface(object):
                     port_id, server_id, response.text
             ))
 
+    def detach_port_from_instance(self, server_id, port_id):
+        token = self.get_auth_token()
+        response = requests.delete(
+            "%s/servers/%s/os-interface/%s" % (
+                self.nova_endpoint, server_id, port_id
+            ),
+            headers={"X-Auth-Token": token}
+        )
+        if response.status_code != 202:
+            raise Exception(
+                "Unable to detach port '{}' from instance '{}': {}".format(
+                    port_id, server_id, response.text
+            ))
+
     def get_mgmt_ip(self, hostname):
         neutron = self.get_neutron_client()
         mgmt_net = neutron.show_network(
@@ -657,7 +731,14 @@ class OpenStackInterface(object):
     def get_netmask(self, cidr):
         mask = int(cidr.split("/")[1])
         bits = 0xffffffff ^ (1 << 32 - mask) - 1
-        return socket.inet_ntoa(pack('>I', bits))
+        return socket.inet_ntoa(struct.pack('>I', bits))
+
+    def ip_in_subnet(self, ip, cidr):
+        ip_address = struct.unpack('!L', socket.inet_aton(ip))[0]
+        network, mask_bits = cidr.split('/')
+        network_address = struct.unpack('!L', socket.inet_aton(network))[0]
+        netmask = (0xFFFFFFFF >> int(mask_bits)) ^ 0xFFFFFFFF
+        return ip_address & netmask == network_address
 
     def _generate_user_data(self, hostname, password, data_port, mgmt_port,
                             cluster_data=None):
@@ -686,6 +767,7 @@ class OpenStackInterface(object):
             "appliance!ssh!port": "2222",
             "rest!bindips": bind_ip,
             "control!bindip": bind_ip if cluster_data else "127.0.0.1",
+            "flipper!frontend_check_addrs": "",
             "appliance!return_path_routing_enabled": "yes",
             "appliance!nameservers":
                 " ".join(cfg.CONF.vtm_settings.nameservers)
@@ -777,7 +859,7 @@ class OpenStackInterface(object):
                     "zxtm!use_invalid_key_license": "y",
                     "zxtm!user": "nobody",
                     "zxtm!cluster": "S",
-                    "zxtm!clustertipjoin": "y",
+                    "zxtm!clustertipjoin": "p",
                     "zxtm!fingerprints_ok": "y",
                     "zlb!admin_username": cfg.CONF.vtm_settings.username,
                     "zlb!admin_port": cfg.CONF.vtm_settings.admin_port,
@@ -862,6 +944,10 @@ write_files:
     path: /opt/zeus/zxtm/conf/actions/sync-cluster
 
 -   content: |
+        0
+    path: /opt/zeus/zxtm/conf/extra/last_update
+
+-   content: |
         #!/usr/bin/env python
 
         import requests
@@ -943,45 +1029,44 @@ write_files:
 "ICAgInVzZXJuYW1lIjogcGFyYW1ldGVyLnZhbHVlX2xpc3RbMF0sCiAgICAgICAgICAgICAgICAic"
 "GFzc3dvcmQiOiBwYXJhbWV0ZXIudmFsdWVfbGlzdFsxXSwKICAgICAgICAgICAgICAgICJncm91cC"
 "I6ICJHdWVzdCIKICAgICAgICAgICAgfQogICAgICAgIGVsaWYgcGFyYW1ldGVyLmtleSBpbiBbICd"
-"yZXN0IWVuYWJsZWQnLCAnY29udHJvbGFsbG93JyBdOgogICAgICAgICAgICBzZXR0aW5nc19jb25m"
-"aWdbcGFyYW1ldGVyLmtleV0gPSBwYXJhbWV0ZXIudmFsdWVfc3RyCiAgICAgICAgZWxpZiBwYXJhb"
-"WV0ZXIua2V5IGluIFsgJ2RldmVsb3Blcl9tb2RlX2FjY2VwdGVkJywgJ25hbWVpcCcgXToKICAgIC"
-"AgICAgICAgZ2xvYmFsX2NvbmZpZ1twYXJhbWV0ZXIua2V5XSA9IHBhcmFtZXRlci52YWx1ZV9zdHI"
-"KICAgICAgICBlbGlmIHBhcmFtZXRlci5rZXkuc3RhcnRzd2l0aCgiYXBwbGlhbmNlIXJldHVybnBh"
-"dGgiKSBcCiAgICAgICAgb3IgICBwYXJhbWV0ZXIua2V5LnN0YXJ0c3dpdGgoImFwcGxpYW5jZSFyZ"
-"XR1cm5fcGF0aCIpOgogICAgICAgICAgICBzZXR0aW5nc19jb25maWdbcGFyYW1ldGVyLmtleV0gPS"
-"BwYXJhbWV0ZXIudmFsdWVfc3RyCiAgICAgICAgZWxpZiBwYXJhbWV0ZXIucHJlZml4IGluIFsgJ2F"
-"wcGxpYW5jZScsICdyZXN0JywgJ2NvbnRyb2wnLCAnc25tcCcgXToKICAgICAgICAgICAgZ2xvYmFs"
-"X2NvbmZpZ1twYXJhbWV0ZXIua2V5XSA9IHBhcmFtZXRlci52YWx1ZV9zdHIKICAgICAgICBlbGlmI"
-"HBhcmFtZXRlci5rZXkgaW4gWyAnYWNjZXNzJyBdOgogICAgICAgICAgICBzZWN1cml0eV9jb25maW"
-"dbcGFyYW1ldGVyLmtleV0gPSBwYXJhbWV0ZXIudmFsdWVfc3RyCiAgICBnbG9iYWxfY29uZmlnLmF"
-"wcGx5KCkKICAgIHNldHRpbmdzX2NvbmZpZy5hcHBseSgpCiAgICBzZWN1cml0eV9jb25maWcuYXBw"
-"bHkoKQogICAgb3MucmVtb3ZlKCIlcy96eHRtL2dsb2JhbC5jZmciICUgWkVVU0hPTUUpCiAgICBvc"
-"y5yZW5hbWUoCiAgICAgICAgIiVzL3p4dG0vY29uZi96eHRtcy8obm9uZSkiICUgWkVVU0hPTUUsIA"
-"ogICAgICAgICIlcy96eHRtL2NvbmYvenh0bXMvJXMiICUgKFpFVVNIT01FLCB1c2VyX2RhdGFbJ2h"
-"vc3RuYW1lJ10pCiAgICApCiAgICBvcy5zeW1saW5rKAogICAgICAgICIlcy96eHRtL2NvbmYvenh0"
-"bXMvJXMiICUgKFpFVVNIT01FLCB1c2VyX2RhdGFbJ2hvc3RuYW1lJ10pLCAKICAgICAgICAiJXMve"
-"nh0bS9nbG9iYWwuY2ZnIiAlIFpFVVNIT01FCiAgICApCiAgICBjYWxsKFsgIiVzL3p4dG0vYmluL3"
-"N5c2NvbmZpZyIgJSBaRVVTSE9NRSwgIi0tYXBwbHkiIF0pCiAgICBjYWxsKCIlcy9zdGFydC16ZXV"
-"zIiAlIFpFVVNIT01FKQogICAgaWYgbmV3X3VzZXIgaXMgbm90IE5vbmU6CiAgICAgICAgdXNlcl9w"
-"cm9jID0gUG9wZW4oCiAgICAgICAgICAgIFsiJXMvenh0bS9iaW4vemNsaSIgJSBaRVVTSE9NRV0sC"
-"iAgICAgICAgICAgIHN0ZG91dD1QSVBFLCBzdGRpbj1QSVBFLCBzdGRlcnI9U1RET1VUCiAgICAgIC"
-"AgKQogICAgICAgIHVzZXJfcHJvYy5jb21tdW5pY2F0ZShpbnB1dD0iVXNlcnMuYWRkVXNlciAlcyw"
-"gJXMsICVzIiAlICgKICAgICAgICAgICAgbmV3X3VzZXJbJ3VzZXJuYW1lJ10sIG5ld191c2VyWydw"
-"YXNzd29yZCddLCBuZXdfdXNlclsnZ3JvdXAnXQogICAgICAgICkpWzBdCiAgICBpZiB1c2VyX2Rhd"
-"GFbJ2NsdXN0ZXJfam9pbl9kYXRhJ10gaXMgbm90IE5vbmU6CiAgICAgICAgd2l0aCBvcGVuKCIvdG"
-"1wL3JlcGxheV9kYXRhIiwgInciKSBhcyByZXBsYXlfZmlsZToKICAgICAgICAgICAgcmVwbGF5X2Z"
-"pbGUud3JpdGUodXNlcl9kYXRhWydjbHVzdGVyX2pvaW5fZGF0YSddKQogICAgICAgIGlmIHVzZXJf"
-"ZGF0YVsnY2x1c3Rlcl90YXJnZXQnXSBpcyBub3QgTm9uZToKICAgICAgICAgICAgcyA9IHNvY2tld"
-"C5zb2NrZXQoc29ja2V0LkFGX0lORVQsIHNvY2tldC5TT0NLX1NUUkVBTSkKICAgICAgICAgICAgcy"
-"5zZXR0aW1lb3V0KDMpCiAgICAgICAgICAgIGZvciBfIGluIHhyYW5nZSg2MCk6CiAgICAgICAgICA"
-"gICAgICB0cnk6CiAgICAgICAgICAgICAgICAgICAgcy5jb25uZWN0KCh1c2VyX2RhdGFbJ2NsdXN0"
-"ZXJfdGFyZ2V0J10sIDkwNzApKQogICAgICAgICAgICAgICAgZXhjZXB0IHNvY2tldC5lcnJvcjoKI"
-"CAgICAgICAgICAgICAgICAgICBzbGVlcCgyKQogICAgICAgICAgICAgICAgZXhjZXB0IHNvY2tldC"
-"5nYWllcnJvcjoKICAgICAgICAgICAgICAgICAgICBicmVhawogICAgICAgICAgICBzLmNsb3NlKCk"
-"KICAgICAgICBjYWxsKFsgIiVzL3p4dG0vY29uZmlndXJlIiAlIFpFVVNIT01FLCAiLS1yZXBsYXkt"
-"ZnJvbT0vdG1wL3JlcGxheV9kYXRhIiBdKQoKCmlmIF9fbmFtZV9fID09ICJfX21haW5fXyI6CiAgI"
-"CBtYWluKCkK"
+"yZXN0IWVuYWJsZWQnLCAnY29udHJvbGFsbG93JyBdIFwKICAgICAgICBvciBwYXJhbWV0ZXIucHJl"
+"Zml4IGluIFsgJ2ZsaXBwZXInIF0gXAogICAgICAgIG9yIHBhcmFtZXRlci5rZXkuc3RhcnRzd2l0a"
+"CgiYXBwbGlhbmNlIXJldHVybnBhdGgiKSBcCiAgICAgICAgb3IgcGFyYW1ldGVyLmtleS5zdGFydH"
+"N3aXRoKCJhcHBsaWFuY2UhcmV0dXJuX3BhdGgiKToKICAgICAgICAgICAgc2V0dGluZ3NfY29uZml"
+"nW3BhcmFtZXRlci5rZXldID0gcGFyYW1ldGVyLnZhbHVlX3N0cgogICAgICAgIGVsaWYgcGFyYW1l"
+"dGVyLmtleSBpbiBbICdkZXZlbG9wZXJfbW9kZV9hY2NlcHRlZCcsICduYW1laXAnIF06CiAgICAgI"
+"CAgICAgIGdsb2JhbF9jb25maWdbcGFyYW1ldGVyLmtleV0gPSBwYXJhbWV0ZXIudmFsdWVfc3RyCi"
+"AgICAgICAgZWxpZiBwYXJhbWV0ZXIucHJlZml4IGluIFsgJ2FwcGxpYW5jZScsICdyZXN0JywgJ2N"
+"vbnRyb2wnLCAnc25tcCcgXToKICAgICAgICAgICAgZ2xvYmFsX2NvbmZpZ1twYXJhbWV0ZXIua2V5"
+"XSA9IHBhcmFtZXRlci52YWx1ZV9zdHIKICAgICAgICBlbGlmIHBhcmFtZXRlci5rZXkgaW4gWyAnY"
+"WNjZXNzJyBdOgogICAgICAgICAgICBzZWN1cml0eV9jb25maWdbcGFyYW1ldGVyLmtleV0gPSBwYX"
+"JhbWV0ZXIudmFsdWVfc3RyCiAgICBnbG9iYWxfY29uZmlnLmFwcGx5KCkKICAgIHNldHRpbmdzX2N"
+"vbmZpZy5hcHBseSgpCiAgICBzZWN1cml0eV9jb25maWcuYXBwbHkoKQogICAgb3MucmVtb3ZlKCIl"
+"cy96eHRtL2dsb2JhbC5jZmciICUgWkVVU0hPTUUpCiAgICBvcy5yZW5hbWUoCiAgICAgICAgIiVzL"
+"3p4dG0vY29uZi96eHRtcy8obm9uZSkiICUgWkVVU0hPTUUsIAogICAgICAgICIlcy96eHRtL2Nvbm"
+"Yvenh0bXMvJXMiICUgKFpFVVNIT01FLCB1c2VyX2RhdGFbJ2hvc3RuYW1lJ10pCiAgICApCiAgICB"
+"vcy5zeW1saW5rKAogICAgICAgICIlcy96eHRtL2NvbmYvenh0bXMvJXMiICUgKFpFVVNIT01FLCB1"
+"c2VyX2RhdGFbJ2hvc3RuYW1lJ10pLCAKICAgICAgICAiJXMvenh0bS9nbG9iYWwuY2ZnIiAlIFpFV"
+"VNIT01FCiAgICApCiAgICBjYWxsKFsgIiVzL3p4dG0vYmluL3N5c2NvbmZpZyIgJSBaRVVTSE9NRS"
+"wgIi0tYXBwbHkiIF0pCiAgICBjYWxsKCIlcy9zdGFydC16ZXVzIiAlIFpFVVNIT01FKQogICAgaWY"
+"gbmV3X3VzZXIgaXMgbm90IE5vbmU6CiAgICAgICAgdXNlcl9wcm9jID0gUG9wZW4oCiAgICAgICAg"
+"ICAgIFsiJXMvenh0bS9iaW4vemNsaSIgJSBaRVVTSE9NRV0sCiAgICAgICAgICAgIHN0ZG91dD1QS"
+"VBFLCBzdGRpbj1QSVBFLCBzdGRlcnI9U1RET1VUCiAgICAgICAgKQogICAgICAgIHVzZXJfcHJvYy"
+"5jb21tdW5pY2F0ZShpbnB1dD0iVXNlcnMuYWRkVXNlciAlcywgJXMsICVzIiAlICgKICAgICAgICA"
+"gICAgbmV3X3VzZXJbJ3VzZXJuYW1lJ10sIG5ld191c2VyWydwYXNzd29yZCddLCBuZXdfdXNlclsn"
+"Z3JvdXAnXQogICAgICAgICkpWzBdCiAgICBpZiB1c2VyX2RhdGFbJ2NsdXN0ZXJfam9pbl9kYXRhJ"
+"10gaXMgbm90IE5vbmU6CiAgICAgICAgd2l0aCBvcGVuKCIvdG1wL3JlcGxheV9kYXRhIiwgInciKS"
+"BhcyByZXBsYXlfZmlsZToKICAgICAgICAgICAgcmVwbGF5X2ZpbGUud3JpdGUodXNlcl9kYXRhWyd"
+"jbHVzdGVyX2pvaW5fZGF0YSddKQogICAgICAgIGlmIHVzZXJfZGF0YVsnY2x1c3Rlcl90YXJnZXQn"
+"XSBpcyBub3QgTm9uZToKICAgICAgICAgICAgcyA9IHNvY2tldC5zb2NrZXQoc29ja2V0LkFGX0lOR"
+"VQsIHNvY2tldC5TT0NLX1NUUkVBTSkKICAgICAgICAgICAgcy5zZXR0aW1lb3V0KDMpCiAgICAgIC"
+"AgICAgIGZvciBfIGluIHhyYW5nZSg2MCk6CiAgICAgICAgICAgICAgICB0cnk6CiAgICAgICAgICA"
+"gICAgICAgICAgcy5jb25uZWN0KCh1c2VyX2RhdGFbJ2NsdXN0ZXJfdGFyZ2V0J10sIDkwNzApKQog"
+"ICAgICAgICAgICAgICAgZXhjZXB0IHNvY2tldC5lcnJvcjoKICAgICAgICAgICAgICAgICAgICBzb"
+"GVlcCgyKQogICAgICAgICAgICAgICAgZXhjZXB0IHNvY2tldC5nYWllcnJvcjoKICAgICAgICAgIC"
+"AgICAgICAgICBicmVhawogICAgICAgICAgICBzLmNsb3NlKCkKICAgICAgICBjYWxsKFsgIiVzL3p"
+"4dG0vY29uZmlndXJlIiAlIFpFVVNIT01FLCAiLS1yZXBsYXktZnJvbT0vdG1wL3JlcGxheV9kYXRh"
+"IiBdKQoKCmlmIF9fbmFtZV9fID09ICJfX21haW5fXyI6CiAgICBtYWluKCkK"
 """
     path: /root/configure.py
 
