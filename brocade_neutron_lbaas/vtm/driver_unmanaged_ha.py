@@ -57,7 +57,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
         """
         try:
             if self.lb_deployment_model == "PER_TENANT":
-                hostnames = self._get_hostname(lb.tenant_id)
+                hostnames = self._get_hostname(lb.vip_subnet_id)
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostnames = self._get_hostname(lb.id)
             vtm = self._get_vtm(hostnames)
@@ -102,7 +102,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
         LOG.debug(_("\ndelete_loadbalancer(%s): called" % lb.id))
         try:
             if self.lb_deployment_model == "PER_TENANT":
-                hostnames = self._get_hostname(lb.tenant_id)
+                hostnames = self._get_hostname(lb.vip_subnet_id)
                 vtm = self._get_vtm(hostnames)
                 vtm.tip_group.delete(lb.id)
                 self._touch_last_modified_timestamp(vtm)

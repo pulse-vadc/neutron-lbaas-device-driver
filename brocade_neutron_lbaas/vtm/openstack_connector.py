@@ -244,10 +244,7 @@ class OpenStackInterface(object):
             ]
         port = neutron.create_port(port_config)['port']
 
-        if cfg.CONF.lbaas_settings.deployment_model == "PER_LOADBALANCER":
-            sec_grp_uuid = lb.id
-        elif cfg.CONF.lbaas_settings.deployment_model == "PER_TENANT":
-            sec_grp_uuid = lb.tenant_id
+        sec_grp_uuid = lb.vip_subnet_id
 
         if create_floating_ip is True:
             floatingip = self.create_floatingip(port['id'])
@@ -303,7 +300,7 @@ class OpenStackInterface(object):
     def attach_port(self, hostname, lb):
         server_id = self.get_server_id_from_hostname(hostname)
         sec_grp_id = self.get_security_group_id(
-            "lbaas-{}".format(lb.tenant_id)
+            "lbaas-{}".format(lb.vip_subnet_id)
         )
         port, junk, junk = self.create_port(
             lb, hostname, security_group=sec_grp_id
@@ -355,27 +352,6 @@ class OpenStackInterface(object):
             protocol=None
         )
        
-        """self.create_security_group_rule(
-            tenant_id,
-            sec_grp['security_group']['id'],
-            port=(1,65535),
-            direction="egress",
-            protocol="tcp"
-        )
-        self.create_security_group_rule(
-            tenant_id,
-            sec_grp['security_group']['id'],
-            port=(1,65535),
-            direction="egress",
-            protocol="udp"
-        )
-        self.create_security_group_rule(
-            tenant_id,
-            sec_grp['security_group']['id'],
-            port="",
-            direction="egress",
-            protocol="icmp"
-        )"""
         # If GUI access is allowed, open up the GUI port
         if cfg.CONF.vtm_settings.gui_access is True and not mgmt_label:
             self.create_security_group_rule(
@@ -478,7 +454,7 @@ class OpenStackInterface(object):
         if cfg.CONF.lbaas_settings.deployment_model == "PER_LOADBALANCER":
             sec_grp_name = "lbaas-%s" % lb.id
         elif cfg.CONF.lbaas_settings.deployment_model == "PER_TENANT":
-            sec_grp_name = "lbaas-%s" % lb.tenant_id
+            sec_grp_name = "lbaas-%s" % lb.vip_subnet_id
         # Get the security group
         neutron = self.get_neutron_client()
         sec_grp = neutron.list_security_groups(
@@ -497,7 +473,7 @@ class OpenStackInterface(object):
         if cfg.CONF.lbaas_settings.deployment_model == "PER_LOADBALANCER":
             sec_grp_name = "lbaas-%s" % lb.id
         elif cfg.CONF.lbaas_settings.deployment_model == "PER_TENANT":
-            sec_grp_name = "lbaas-%s" % lb.tenant_id
+            sec_grp_name = "lbaas-%s" % lb.vip_subnet_id
         # Get the security group
         neutron = self.get_neutron_client()
         sec_grp = neutron.list_security_groups(
@@ -759,7 +735,7 @@ class OpenStackInterface(object):
             "appliance!hostname": hostname,
             "appliance!licence_agreed": "Yes",
             "rest!port": cfg.CONF.vtm_settings.rest_port,
-            "appliance!gateway": mgmt_subnet['gateway_ip'],
+            "appliance!gateway": data_subnet['gateway_ip'] or mgmt_subnet['gateway_ip'],
             "appliance!if!eth0!autoneg": "Yes",
             "appliance!if!eth0!mtu": cfg.CONF.vtm_settings.mtu,
             "appliance!ip!eth0!isexternal": "No",
@@ -771,10 +747,6 @@ class OpenStackInterface(object):
             "appliance!nameservers":
                 " ".join(cfg.CONF.vtm_settings.nameservers)
         }
-        # Set return-path routes
-        gateway_ip, gateway_mac = self.get_subnet_gateway(data_subnet['id'])
-        if gateway_ip is not None and gateway_mac is not None:
-            replay_data['appliance!returnpath!%s!ipv4' % gateway_mac] = gateway_ip
         # SNMP configuration
         if cfg.CONF.vtm_settings.snmp_enabled is True:
             replay_data['snmp!enabled'] = "Yes"

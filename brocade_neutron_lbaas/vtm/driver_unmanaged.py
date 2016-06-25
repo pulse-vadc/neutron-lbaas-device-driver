@@ -71,19 +71,11 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         LOG.debug(_("\ncreate_loadbalancer(%s): called" % lb.id))
         try:
             self._assert_not_mgmt_network(lb.vip_subnet_id)
-            if self.lb_deployment_model == "PER_TENANT":
-                hostname = self._get_hostname(lb.tenant_id)
-                if not self.openstack_connector.vtm_exists(hostname):
-                    self._spawn_vtm(hostname, lb)
-                    sleep(5)
-                elif not self.openstack_connector.vtm_has_subnet_port(
-                    hostname, lb):
-                    vtm = self._get_vtm(hostname)
-                    self._attach_subnet_port(vtm, hostname, lb)
-                self.update_loadbalancer(lb, None)
-            elif self.lb_deployment_model == "PER_LOADBALANCER":
-                hostname = self._get_hostname(lb.id)
+            hostname = self._get_hostname(lb.vip_subnet_id)
+            if not self.openstack_connector.vtm_exists(hostname):
                 self._spawn_vtm(hostname, lb)
+                sleep(5)
+            self.update_loadbalancer(lb, None)
             LOG.debug(_("\ncreate_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in create_loadbalancer(%s): %s" % (lb.id, e)))
@@ -99,26 +91,25 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         """
         LOG.debug(_("\nupdate_loadbalancer(%s): called" % lb.id))
         try:
-            if self.lb_deployment_model == "PER_TENANT":
-                hostname = self._get_hostname(lb.tenant_id)
-                vtm = self._get_vtm(hostname)
-                tip_config = {"properties": {
-                    "basic": {
-                        "enabled": lb.admin_state_up,
-                        "ipaddresses": [lb.vip_address],
-                        "machines": vtm.get_nodes_in_cluster(),
-                        "note": lb.name
-                    }
-                }}
-                vtm.tip_group.create(lb.id, config=tip_config)
-                self._touch_last_modified_timestamp(vtm)
-                if not old or lb.vip_address != old.vip_address:
-                    port_ids = self.openstack_connector.get_server_port_ids(
-                        hostname
-                    )
-                    self.openstack_connector.add_ip_to_ports(
-                        lb.vip_address, port_ids
-                    )
+            hostname = self._get_hostname(lb.vip_subnet_id)
+            vtm = self._get_vtm(hostname)
+            tip_config = {"properties": {
+                "basic": {
+                    "enabled": lb.admin_state_up,
+                    "ipaddresses": [lb.vip_address],
+                    "machines": vtm.get_nodes_in_cluster(),
+                    "note": lb.name
+                }
+            }}
+            vtm.tip_group.create(lb.id, config=tip_config)
+            self._touch_last_modified_timestamp(vtm)
+            if not old or lb.vip_address != old.vip_address:
+                port_ids = self.openstack_connector.get_server_port_ids(
+                    hostname
+                )
+                self.openstack_connector.add_ip_to_ports(
+                    lb.vip_address, port_ids
+                )
             LOG.debug(_("\nupdate_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in update_loadbalancer(%s): %s" % (lb.id, e)))
@@ -136,31 +127,24 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         """
         LOG.debug(_("\ndelete_loadbalancer(%s): called" % lb.id))
         try:
-            if self.lb_deployment_model == "PER_TENANT":
-                hostname = self._get_hostname(lb.tenant_id)
-                vtm = self._get_vtm(hostname)
-                vtm.tip_group.delete(lb.id)
-                self._touch_last_modified_timestamp(vtm)
-                if not vtm.tip_group.list():
-                    LOG.debug(_(
-                        "\ndelete_loadbalancer(%s): "
-                        "last loadbalancer deleted; destroying vTM" % lb.id
-                    ))
-                    self._destroy_vtm(hostname, lb)
-                else:
-                    # Delete subnet port if it's no longer required
-                    if self.openstack_connector.subnet_in_use(lb) is False:
-                        self._detach_subnet_port(vtm, hostname, lb)
-                    # Remove allowed_address_pairs entry from remaining ports
-                    port_ids = self.openstack_connector.get_server_port_ids(
-                        hostname
-                    )
-                    self.openstack_connector.delete_ip_from_ports(
-                        lb.vip_address, port_ids
-                    )
-            elif self.lb_deployment_model == "PER_LOADBALANCER":
-                hostname = self._get_hostname(lb.id)
+            hostname = self._get_hostname(lb.vip_subnet_id)
+            vtm = self._get_vtm(hostname)
+            vtm.tip_group.delete(lb.id)
+            self._touch_last_modified_timestamp(vtm)
+            if not vtm.tip_group.list():
+                LOG.debug(_(
+                    "\ndelete_loadbalancer(%s): "
+                    "last loadbalancer deleted; destroying vTM" % lb.id
+                ))
                 self._destroy_vtm(hostname, lb)
+            else:
+                # Remove allowed_address_pairs entry from remaining ports
+                port_ids = self.openstack_connector.get_server_port_ids(
+                    hostname
+                )
+                self.openstack_connector.delete_ip_from_ports(
+                    lb.vip_address, port_ids
+                )
             LOG.debug(_("\ndelete_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in delete_loadbalancer(%s): %s" % (lb.id, e)))
@@ -183,7 +167,9 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         try:
             listen_on_settings = {}
             if self.lb_deployment_model == "PER_TENANT":
-                hostname = self._get_hostname(listener.tenant_id)
+                hostname = self._get_hostname(
+                    listener.loadbalancer.vip_subnet_id
+                )
                 listen_on_settings['listen_on_traffic_ips'] = [
                     listener.loadbalancer.id
                 ]
@@ -213,7 +199,9 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         LOG.debug(_("\ndelete_listener(%s): called" % listener.id))
         try:
             if self.lb_deployment_model == "PER_TENANT":
-                hostname = self._get_hostname(listener.tenant_id)
+                hostname = self._get_hostname(
+                    listener.loadbalancer.vip_subnet_id
+                )
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(listener.loadbalancer_id)
             vtm = self._get_vtm(hostname, True)
@@ -243,7 +231,9 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         LOG.debug(_("\nupdate_pool(%s): called" % pool.id))
         try:
             if self.lb_deployment_model == "PER_TENANT":
-                hostname = self._get_hostname(pool.tenant_id)
+                hostname = self._get_hostname(
+                    pool.listener.loadbalancer.vip_subnet_id
+                )
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(pool.listener.loadbalancer_id)
             vtm = self._get_vtm(hostname, True)
@@ -265,7 +255,9 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         LOG.debug(_("\ndelete_pool(%s): called" % pool.id))
         try:
             if self.lb_deployment_model == "PER_TENANT":
-                hostname = self._get_hostname(pool.tenant_id)
+                hostname = self._get_hostname(
+                    pool.listener.loadbalancer.vip_subnet_id
+                )
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(pool.listener.loadbalancer_id)
             vtm = self._get_vtm(hostname, True)
@@ -287,7 +279,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         LOG.debug(_("\nupdate_healthmonitor(%s): called" % monitor.id))
         try:
             if self.lb_deployment_model == "PER_TENANT":
-                hostname = self._get_hostname(monitor.tenant_id)
+                hostname = self._get_hostname(monitor.loadbalancer.vip_subnet_id)
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(monitor.root_loadbalancer.id)
             vtm = self._get_vtm(hostname)
@@ -307,7 +299,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         LOG.debug(_("\ndelete_healthmonitor(%s): called" % monitor.id))
         try:
             if self.lb_deployment_model == "PER_TENANT":
-                hostname = self._get_hostname(monitor.tenant_id)
+                hostname = self._get_hostname(monitor.loadbalancer.vip_subnet_id)
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(monitor.root_loadbalancer.id)
             vtm = self._get_vtm(hostname)
@@ -331,7 +323,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         LOG.debug(_("\nstats(%s): called" % loadbalancer.id))
         try:
             if self.lb_deployment_model == "PER_TENANT":
-                hostname = self._get_hostname(loadbalancer.tenant_id)
+                hostname = self._get_hostname(loadbalancer.vip_subnet_id)
                 vtm = self._get_vtm(hostname)
                 return super(BrocadeAdxDeviceDriverV2, self).stats(
                     vtm, loadbalancer.vip_address
