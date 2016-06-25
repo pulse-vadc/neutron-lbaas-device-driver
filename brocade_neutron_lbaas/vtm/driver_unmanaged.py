@@ -455,11 +455,12 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         ip, mac = self.openstack_connector.get_subnet_gateway(
             lb.vip_subnet_id
         )
-        return_paths = vtm.global_settings.ip__appliance_returnpath
-        if {"mac": mac, "ipv4": ip} not in return_paths:
-            return_paths.append({"mac": mac, "ipv4": ip})
-            vtm.global_settings.ip__appliance_returnpath = return_paths
-            vtm.global_settings.update()
+        if ip is not None and mac is not None:
+            return_paths = vtm.global_settings.ip__appliance_returnpath
+            if {"mac": mac, "ipv4": ip} not in return_paths:
+                return_paths.append({"mac": mac, "ipv4": ip})
+                vtm.global_settings.ip__appliance_returnpath = return_paths
+                vtm.global_settings.update()
 
     def _detach_subnet_port(self, vtm, hostname, lb):
         # Detach and delete Neutron port from the instance

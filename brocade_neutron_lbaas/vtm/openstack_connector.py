@@ -677,11 +677,7 @@ class OpenStackInterface(object):
             for fixed_ip in port['fixed_ips']:
                 if fixed_ip['ip_address'] == subnet['gateway_ip']:
                     return (subnet['gateway_ip'], port['mac_address'])
-        raise Exception(
-            "No port for gateway IP '{}' found on network '{}'".format(
-                gateway_ip, network_id
-            )
-        )
+        return (None, None)
 
     def get_neutron_client(self):
         auth_token = self.get_auth_token(lbaas_tenant=False)
