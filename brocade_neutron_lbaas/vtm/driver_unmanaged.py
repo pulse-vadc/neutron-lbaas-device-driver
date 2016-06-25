@@ -279,7 +279,9 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         LOG.debug(_("\nupdate_healthmonitor(%s): called" % monitor.id))
         try:
             if self.lb_deployment_model == "PER_TENANT":
-                hostname = self._get_hostname(monitor.loadbalancer.vip_subnet_id)
+                hostname = self._get_hostname(
+                    monitor.root_loadbalancer.vip_subnet_id
+                )
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(monitor.root_loadbalancer.id)
             vtm = self._get_vtm(hostname)
@@ -299,7 +301,9 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         LOG.debug(_("\ndelete_healthmonitor(%s): called" % monitor.id))
         try:
             if self.lb_deployment_model == "PER_TENANT":
-                hostname = self._get_hostname(monitor.loadbalancer.vip_subnet_id)
+                hostname = self._get_hostname(
+                    monitor.root_loadbalancer.vip_subnet_id
+                )
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(monitor.root_loadbalancer.id)
             vtm = self._get_vtm(hostname)
