@@ -60,6 +60,32 @@ class vTMDeviceDriverCommon(object):
         "TCP": "connect"
     }
 
+
+    def logging_wrapper(lbaas_func):
+        def inner(*args):
+            LOG.error(_(
+                "\n{}({}): called".format(
+                    lbaas_func.__name__, getattr(args[1], "id")
+            )))
+            try:
+                lbaas_func(*args)
+                LOG.error(_(
+                    "\n{}({}): completed!".format(
+                        lbaas_func.__name__, getattr(args[1], "id")
+                )))
+            except Exception as e:
+                LOG.error(_(
+                    "\nError in {}({}): {}\n\n{}".format(
+                        lbaas_func.__name__,
+                        getattr(args[1], "id"),
+                        e,
+                        format_exc()
+                )))
+                raise LbaasException()
+        return inner
+
+    logging_wrapper = staticmethod(logging_wrapper)
+
 #############
 # LISTENERS #
 #############

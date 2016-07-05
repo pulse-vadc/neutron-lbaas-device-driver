@@ -74,7 +74,10 @@ lbaas_setting_opts = [
     cfg.StrOpt('os_admin_username', default="admin",
                help=_('LBaaS instance container project')),
     cfg.StrOpt('os_admin_project_id',
-               help=_('Keystone ID of admin project'))
+               help=_('Keystone ID of admin project')),
+    cfg.ListOpt('shared_subnets', help=_(
+                'List of Neutron subnet IDs that represent the available '
+                'shared subnets'))
 ]
 services_director_setting_opts = [
     cfg.StrOpt('api_version', default="2.0",
