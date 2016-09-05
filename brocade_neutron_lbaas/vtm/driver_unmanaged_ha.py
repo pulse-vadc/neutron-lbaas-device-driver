@@ -105,6 +105,8 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                     self.openstack_connector.delete_ip_from_ports(
                         lb.vip_address, port_ids
                     )
+                # Adjust the bandwidth allocation of the vTM
+                self._update_bandwidth(vtm, hostnames)
             LOG.debug(_("\ndelete_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in delete_loadbalancer(%s): %s" % (lb.id, e)))
@@ -116,13 +118,17 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
 ########
 
     def _get_hostname(self, lb):
+        identifier = self._get_identifier(lb)
+        return ("vtm-%s-pri" % (identifier), "vtm-%s-sec" % (identifier))
+
+    def _get_identifier(self, lb):
         if lb.vip_subnet_id in cfg.CONF.lbaas_settings.shared_subnets:
             identifier = hashlib.sha1(
                 "{}-{}".format(lb.vip_subnet_id, lb.tenant_id)
             ).hexdigest()
         else:
             identifier = lb.vip_subnet_id
-        return ("vtm-%s-pri" % (identifier), "vtm-%s-sec" % (identifier))
+        return identifier
 
     def _spawn_vtm(self, hostnames, lb):
         """
@@ -130,6 +136,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
         The VMs are registered with Services Director to provide licensing and
         configuration proxying.
         """
+        identifier = self._get_identifier(lb)
         # Initialize lists of items to clean up if operation fails
         port_ids = []
         security_groups = []
@@ -141,11 +148,11 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
             ports = {}
             # Primary data port (management network)
             (data_port, data_sec_grp, junk) = self.openstack_connector.create_port(
-                lb, hostnames[0], cluster=True
+                lb, hostnames[0], cluster=True, identifier=identifier
             )
             # Primary mgmt port (management network)
             (mgmt_port, mgmt_sec_grp, mgmt_ip) = self.openstack_connector.create_port(
-                lb, hostnames[0], mgmt_port=True, cluster=True
+                lb, hostnames[0], mgmt_port=True, cluster=True, identifier=identifier
             )
             ports[hostnames[0]] = {
                 "ports": {

@@ -24,6 +24,7 @@ from oslo.config import cfg
 from oslo_log import log as logging
 from services_director import ServicesDirector
 from vtm import vTM
+from threading import Thread
 from time import sleep, time
 from traceback import format_exc
 
@@ -76,6 +77,12 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 self._spawn_vtm(hostname, lb)
                 sleep(5)
             self.update_loadbalancer(lb, None)
+            vtm = self._get_vtm(hostname)
+            self._update_bandwidth(vtm, hostname)
+            description_updater_thread = DescriptionUpdater(
+                self.openstack_connector, vtm, lb, hostname
+            )
+            description_updater_thread.start()
             LOG.debug(_("\ncreate_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in create_loadbalancer(%s): %s" % (lb.id, e)))
@@ -145,6 +152,8 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 self.openstack_connector.delete_ip_from_ports(
                     lb.vip_address, port_ids
                 )
+                # Adjust the bandwidth allocation of the vTM
+                self._update_bandwidth(vtm, hostname)
             LOG.debug(_("\ndelete_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in delete_loadbalancer(%s): %s" % (lb.id, e)))
@@ -345,6 +354,22 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
 # MISC #
 ########
 
+    def _update_bandwidth(self, vtm, hostnames):
+        """
+        Set the bandwidth to per-lb bandwidth * number of TIPs on instance.
+        """
+        if isinstance(hostnames, basestring):
+            hostnames = [hostnames]
+        num_of_tips = len(vtm.tip_groups.list())
+        tip_bandwidth = cfg.CONF.services_director_settings.bandwidth
+        total_bandwidth = num_of_tips * tip_bandwidth
+        services_director = self._get_services_director()
+        for hostname in hostnames:
+            instance = services_director.unmanaged_instance.create(
+                hostname,
+                bandwidth=total_bandwidth
+            )
+
     def _touch_last_modified_timestamp(self, vtm):
         timestamp = str(int(time() * 1000))
         vtm.extra_file.create("last_update", file_text=timestamp)
@@ -517,6 +542,35 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         services_director = self._get_services_director()
         services_director.unmanaged_instance.delete(hostname)
         LOG.debug(_("\nInstance %s deactivated" % hostname))
+
+
+class DescriptionUpdater(Thread):
+    def __init__(self, os_conn, vtm, lb, hostname):
+        self.openstack_connector = os_conn
+        self.vtm = vtm
+        self.lb = lb
+        if isinstance(hostname, basestring):
+            self.hostname = hostname 
+        else:
+            self.hostname = hostname[0]
+        super(DescriptionUpdater, self).__init__()
+
+    def run(self):
+        tm = self.vtm.traffic_managers.get(self.hostname)
+        ip_addresses = [host['ip_address'] for host in tm.appliance__hosts]
+        neutron = self.openstack_connector.get_neutron_client()
+        while True:
+            lb = neutron.show_loadbalancer(self.lb.id)
+            if lb['loadbalancer']['provisioning_status'] != "PENDING_CREATE":
+                break
+            sleep(3)
+        body = {"loadbalancer": {
+            "description": "{} {}".format(
+                self.lb.description,
+                "(vTMs: {})".format(", ".join(ip_addresses))
+            )
+        }}
+        neutron.update_loadbalancer(self.lb.id, body)
 
 
 class NoServicesDirectorsAvailableError(Exception):

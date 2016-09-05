@@ -225,7 +225,10 @@ class OpenStackInterface(object):
                 raise Exception("VM build failed")
 
     def create_port(self, lb, hostname, mgmt_port=False, cluster=False,
-                    create_floating_ip=False, security_group=None):
+                    create_floating_ip=False, security_group=None,
+                    identifier=None):
+        if identifier is None and security_group is None:
+            raise Exception("Must specify either security_group or identifier")
         neutron = self.get_neutron_client()
         if mgmt_port is False:
             subnet = neutron.show_subnet(lb.vip_subnet_id)
@@ -244,25 +247,23 @@ class OpenStackInterface(object):
             ]
         port = neutron.create_port(port_config)['port']
 
-        sec_grp_uuid = lb.vip_subnet_id
-
         if create_floating_ip is True:
             floatingip = self.create_floatingip(port['id'])
             mgmt_ip = floatingip['floatingip']['floating_ip_address']
             if security_group is None:
                 sec_grp = self.create_lb_security_group(
-                    lb.tenant_id, sec_grp_uuid, mgmt_port=True, cluster=cluster
+                    lb.tenant_id, identifier, mgmt_port=True, cluster=cluster
                 )
                 security_group = sec_grp['security_group']['id']
         else:
             if security_group is None:
                 if mgmt_port is False:
                     sec_grp = self.create_lb_security_group(
-                        lb.tenant_id, sec_grp_uuid
+                        lb.tenant_id, identifier
                     )
                 else:
                     sec_grp = self.create_lb_security_group(
-                        lb.tenant_id, sec_grp_uuid, mgmt_port=True,
+                        lb.tenant_id, identifier, mgmt_port=True,
                         mgmt_label=True, cluster=cluster
                     )
                 security_group = sec_grp['security_group']['id']            
@@ -297,10 +298,10 @@ class OpenStackInterface(object):
             return True
         return False
 
-    def attach_port(self, hostname, lb):
+    def attach_port(self, hostname, lb, identifier):
         server_id = self.get_server_id_from_hostname(hostname)
         sec_grp_id = self.get_security_group_id(
-            "lbaas-{}".format(lb.vip_subnet_id)
+            "lbaas-{}".format(identifier)
         )
         port, junk, junk = self.create_port(
             lb, hostname, security_group=sec_grp_id
@@ -353,7 +354,7 @@ class OpenStackInterface(object):
         )
        
         # If GUI access is allowed, open up the GUI port
-        if cfg.CONF.vtm_settings.gui_access is True and not mgmt_label:
+        if cfg.CONF.vtm_settings.gui_access is True and mgmt_label:
             self.create_security_group_rule(
                 tenant_id,
                 sec_grp['security_group']['id'],
@@ -446,15 +447,12 @@ class OpenStackInterface(object):
             # Rule may already exist
             pass
 
-    def allow_port(self, lb, port, protocol='tcp'):
+    def allow_port(self, lb, port, identifier, protocol='tcp'):
         """
         Adds access to a given port to a security group.
         """
         # Get the name of the security group for the "loadbalancer"
-        if cfg.CONF.lbaas_settings.deployment_model == "PER_LOADBALANCER":
-            sec_grp_name = "lbaas-%s" % lb.id
-        elif cfg.CONF.lbaas_settings.deployment_model == "PER_TENANT":
-            sec_grp_name = "lbaas-%s" % lb.vip_subnet_id
+        sec_grp_name = "lbaas-%s" % identifier
         # Get the security group
         neutron = self.get_neutron_client()
         sec_grp = neutron.list_security_groups(
@@ -465,15 +463,12 @@ class OpenStackInterface(object):
             lb.tenant_id, sec_grp['id'], port, protocol=protocol
         )
 
-    def block_port(self, lb, port, protocol='tcp'):
+    def block_port(self, lb, port, identifier, protocol='tcp'):
         """
         Removes access to a given port from a security group.
         """
         # Get the name of the security group for the "loadbalancer"
-        if cfg.CONF.lbaas_settings.deployment_model == "PER_LOADBALANCER":
-            sec_grp_name = "lbaas-%s" % lb.id
-        elif cfg.CONF.lbaas_settings.deployment_model == "PER_TENANT":
-            sec_grp_name = "lbaas-%s" % lb.vip_subnet_id
+        sec_grp_name = "lbaas-%s" % identifier
         # Get the security group
         neutron = self.get_neutron_client()
         sec_grp = neutron.list_security_groups(
