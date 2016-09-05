@@ -78,7 +78,9 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 sleep(5)
             self.update_loadbalancer(lb, None)
             vtm = self._get_vtm(hostname)
-            self._update_bandwidth(vtm, hostname)
+            self._create_bw_class(vtm, lb)
+            self._create_bw_trafficscript(vtm)
+            self._update_sd_bandwidth(vtm, hostname)
             description_updater_thread = DescriptionUpdater(
                 self.openstack_connector, vtm, lb, hostname
             )
@@ -153,7 +155,8 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                     lb.vip_address, port_ids
                 )
                 # Adjust the bandwidth allocation of the vTM
-                self._update_bandwidth(vtm, hostname)
+                self._delete_bw_class(vtm, lb)
+                self._update_sd_bandwidth(vtm, hostname)
             LOG.debug(_("\ndelete_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in delete_loadbalancer(%s): %s" % (lb.id, e)))
@@ -187,10 +190,17 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 hostname = self._get_hostname(listener.loadbalancer_id)
                 listen_on_settings['listen_on_traffic_ips'] = []
                 listen_on_settings['listen_on_any'] = True
-            vtm = self._get_vtm(hostname, True)
+            LOG.error("\n\nGetting vTM {}\n".format(hostname))
+            vtm = self._get_vtm(hostname)
+            LOG.error("\n\nGot vTM {}\n".format(hostname))
             super(BrocadeAdxDeviceDriverV2, self).update_listener(
                 listener, old, vtm, listen_on_settings
             )
+            LOG.error("\n\nGetting vserver {}\n".format(listener.id))
+            vs = vtm.vserver.get(listener.id)
+            vs.response_rules = ["bandwidth_rule"]
+            vs.update()
+            LOG.error("\n\nBandwidth rule configured\n")
             self._touch_last_modified_timestamp(vtm)
             LOG.debug(_("\nupdate_listener(%s): completed" % listener.id))
         except Exception as e:
@@ -213,7 +223,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 )
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(listener.loadbalancer_id)
-            vtm = self._get_vtm(hostname, True)
+            vtm = self._get_vtm(hostname)
             super(BrocadeAdxDeviceDriverV2, self).delete_listener(
                 listener, vtm
             )
@@ -245,7 +255,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 )
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(pool.listener.loadbalancer_id)
-            vtm = self._get_vtm(hostname, True)
+            vtm = self._get_vtm(hostname)
             super(BrocadeAdxDeviceDriverV2, self).update_pool(
                 pool, old, vtm
             )
@@ -269,7 +279,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 )
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(pool.listener.loadbalancer_id)
-            vtm = self._get_vtm(hostname, True)
+            vtm = self._get_vtm(hostname)
             super(BrocadeAdxDeviceDriverV2, self).delete_pool(
                 pool, vtm
             )
@@ -354,9 +364,10 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
 # MISC #
 ########
 
-    def _update_bandwidth(self, vtm, hostnames):
+    def _update_sd_bandwidth(self, vtm, hostnames):
         """
-        Set the bandwidth to per-lb bandwidth * number of TIPs on instance.
+        Set Services Director bandwidth allocation to 
+        [per-lb bandwidth] * [number of TIPs on instance.]
         """
         if isinstance(hostnames, basestring):
             hostnames = [hostnames]
@@ -369,6 +380,21 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 hostname,
                 bandwidth=total_bandwidth
             )
+
+    def _create_bw_class(self, vtm, lb):
+        vtm.bandwidth_class.create(
+            lb.vip_address,
+            maximum=(cfg.CONF.services_director_settings.bandwidth * 1000)
+        )
+
+    def _delete_bw_class(self, vtm, lb):
+        vtm.bandwidth_class.delete(lb.vip_address)
+
+    def _create_bw_trafficscript(self, vtm):
+        vtm.rule.create(
+            "bandwidth_rule",
+            rule_text="response.setBandwidthClass(request.getLocalIP());"
+        )
 
     def _touch_last_modified_timestamp(self, vtm):
         timestamp = str(int(time() * 1000))
