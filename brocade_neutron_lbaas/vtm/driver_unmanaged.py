@@ -567,19 +567,24 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
 
 
 class DescriptionUpdater(Thread):
-    def __init__(self, os_conn, vtm, lb, hostname):
+    def __init__(self, os_conn, vtm, lb, hostnames):
         self.openstack_connector = os_conn
         self.vtm = vtm
         self.lb = lb
-        if isinstance(hostname, basestring):
-            self.hostname = hostname 
+        if isinstance(hostnames, basestring):
+            self.hostnames = [hostnames]
         else:
-            self.hostname = hostname[0]
+            self.hostnames = hostnames
         super(DescriptionUpdater, self).__init__()
 
     def run(self):
-        tm = self.vtm.traffic_managers.get(self.hostname)
-        ip_addresses = [host['ip_address'] for host in tm.appliance__hosts]
+        ip_addresses = []
+        for hostname in self.hostnames:
+            tm = self.vtm.traffic_managers.get(hostname)
+            ip_addresses.append([
+                nic['addr'] for nic in tm.appliance__ip
+                if nic['name'] == "eth1"
+            ][0])
         neutron = self.openstack_connector.get_neutron_client()
         while True:
             lb = neutron.show_loadbalancer(self.lb.id)
@@ -589,7 +594,9 @@ class DescriptionUpdater(Thread):
         body = {"loadbalancer": {
             "description": "{} {}".format(
                 self.lb.description,
-                "(vTMs: {})".format(", ".join(ip_addresses))
+                "(vTMs: {}; VIP: {})".format(
+                    ", ".join(ip_addresses), self.lb.vip_address
+                )
             )
         }}
         neutron.update_loadbalancer(self.lb.id, body)
