@@ -190,17 +190,13 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 hostname = self._get_hostname(listener.loadbalancer_id)
                 listen_on_settings['listen_on_traffic_ips'] = []
                 listen_on_settings['listen_on_any'] = True
-            LOG.error("\n\nGetting vTM {}\n".format(hostname))
-            vtm = self._get_vtm(hostname)
-            LOG.error("\n\nGot vTM {}\n".format(hostname))
+            vtm = self._get_vtm(hostname, True)
             super(BrocadeAdxDeviceDriverV2, self).update_listener(
                 listener, old, vtm, listen_on_settings
             )
-            LOG.error("\n\nGetting vserver {}\n".format(listener.id))
             vs = vtm.vserver.get(listener.id)
             vs.response_rules = ["bandwidth_rule"]
             vs.update()
-            LOG.error("\n\nBandwidth rule configured\n")
             self._touch_last_modified_timestamp(vtm)
             LOG.debug(_("\nupdate_listener(%s): completed" % listener.id))
         except Exception as e:
@@ -223,7 +219,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 )
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(listener.loadbalancer_id)
-            vtm = self._get_vtm(hostname)
+            vtm = self._get_vtm(hostname, True)
             super(BrocadeAdxDeviceDriverV2, self).delete_listener(
                 listener, vtm
             )
@@ -255,7 +251,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 )
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(pool.listener.loadbalancer_id)
-            vtm = self._get_vtm(hostname)
+            vtm = self._get_vtm(hostname, True)
             super(BrocadeAdxDeviceDriverV2, self).update_pool(
                 pool, old, vtm
             )
@@ -279,7 +275,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 )
             elif self.lb_deployment_model == "PER_LOADBALANCER":
                 hostname = self._get_hostname(pool.listener.loadbalancer_id)
-            vtm = self._get_vtm(hostname)
+            vtm = self._get_vtm(hostname, True)
             super(BrocadeAdxDeviceDriverV2, self).delete_pool(
                 pool, vtm
             )
