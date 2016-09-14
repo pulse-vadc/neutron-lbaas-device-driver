@@ -579,6 +579,11 @@ class DescriptionUpdater(Thread):
 
     def run(self):
         ip_addresses = []
+        if cfg.CONF.lbaas_settings.deploy_ha_pairs is True:
+            while True:
+                if len(self.vtm.traffic_managers.list()) == 2:
+                    break
+                sleep(3)
         for hostname in self.hostnames:
             tm = self.vtm.traffic_managers.get(hostname)
             ip_addresses.append([
