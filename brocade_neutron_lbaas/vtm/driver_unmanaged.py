@@ -78,8 +78,8 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 sleep(5)
             self.update_loadbalancer(lb, None)
             vtm = self._get_vtm(hostname)
-            self._create_bw_class(vtm, lb)
-            self._create_bw_trafficscript(vtm)
+            #self._create_bw_class(vtm, lb)
+            #self._create_bw_trafficscript(vtm)
             self._update_sd_bandwidth(vtm, hostname)
             description_updater_thread = DescriptionUpdater(
                 self.openstack_connector, vtm, lb, hostname
@@ -155,7 +155,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                     lb.vip_address, port_ids
                 )
                 # Adjust the bandwidth allocation of the vTM
-                self._delete_bw_class(vtm, lb)
+                #self._delete_bw_class(vtm, lb)
                 self._update_sd_bandwidth(vtm, hostname)
             LOG.debug(_("\ndelete_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
@@ -194,9 +194,9 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             super(BrocadeAdxDeviceDriverV2, self).update_listener(
                 listener, old, vtm, listen_on_settings
             )
-            vs = vtm.vserver.get(listener.id)
-            vs.response_rules = ["bandwidth_rule"]
-            vs.update()
+            #vs = vtm.vserver.get(listener.id)
+            #vs.response_rules = ["bandwidth_rule"]
+            #vs.update()
             self._touch_last_modified_timestamp(vtm)
             LOG.debug(_("\nupdate_listener(%s): completed" % listener.id))
         except Exception as e:

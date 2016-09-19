@@ -106,7 +106,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                         lb.vip_address, port_ids
                     )
                 # Adjust the bandwidth allocation of the vTM
-                self._delete_bw_class(vtm, lb)
+                #self._delete_bw_class(vtm, lb)
                 self._update_sd_bandwidth(vtm, hostnames)
             LOG.debug(_("\ndelete_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
