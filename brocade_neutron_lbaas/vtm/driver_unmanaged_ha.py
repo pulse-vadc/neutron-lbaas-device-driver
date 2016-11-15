@@ -118,11 +118,8 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
 ########
 
     def _get_hostname(self, lb):
-        identifier = self.get_identifier(lb)
+        identifier = self.openstack_connector.get_identifier(lb)
         return ("vtm-%s-pri" % (identifier), "vtm-%s-sec" % (identifier))
-
-    def _get_identifier(self, lb):
-        return self.openstack_connector.get_identifier(lb)
 
     def _spawn_vtm(self, hostnames, lb):
         """
@@ -130,7 +127,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
         The VMs are registered with Services Director to provide licensing and
         configuration proxying.
         """
-        identifier = self.get_identifier(lb)
+        identifier = self.openstack_connector.get_identifier(lb)
         # Initialize lists of items to clean up if operation fails
         port_ids = []
         security_groups = []
