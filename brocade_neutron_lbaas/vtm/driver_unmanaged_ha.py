@@ -17,7 +17,6 @@
 # Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
 #
 
-import hashlib
 from neutron_lbaas.common.exceptions import LbaasException
 from oslo.config import cfg
 from oslo_log import log as logging
@@ -119,17 +118,11 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
 ########
 
     def _get_hostname(self, lb):
-        identifier = self._get_identifier(lb)
+        identifier = self.get_identifier(lb)
         return ("vtm-%s-pri" % (identifier), "vtm-%s-sec" % (identifier))
 
     def _get_identifier(self, lb):
-        if lb.vip_subnet_id in cfg.CONF.lbaas_settings.shared_subnets:
-            identifier = hashlib.sha1(
-                "{}-{}".format(lb.vip_subnet_id, lb.tenant_id)
-            ).hexdigest()
-        else:
-            identifier = lb.vip_subnet_id
-        return identifier
+        return self.openstack_connector.get_identifier(lb)
 
     def _spawn_vtm(self, hostnames, lb):
         """
@@ -137,7 +130,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
         The VMs are registered with Services Director to provide licensing and
         configuration proxying.
         """
-        identifier = self._get_identifier(lb)
+        identifier = self.get_identifier(lb)
         # Initialize lists of items to clean up if operation fails
         port_ids = []
         security_groups = []

@@ -18,6 +18,7 @@
 #
 
 import base64
+import hashlib
 import json
 from neutronclient.neutron import client as neutron_client
 from oslo_log import log as logging
@@ -463,14 +464,42 @@ class OpenStackInterface(object):
             lb.tenant_id, sec_grp['id'], port, protocol=protocol
         )
 
-    def block_port(self, lb, port, identifier, protocol='tcp'):
+    def block_port(self, lb, port, identifier, protocol='tcp', force=False):
         """
         Removes access to a given port from a security group.
         """
+        neutron = self.get_neutron_client()
+        # Only block the port if not in use by another listener hosted on 
+        # the same vTM
+        if force is False:
+            # Get all listeners belonging to this tenant that use this port
+            listeners = neutron.list_listeners(
+                tenant_id=lb.tenant_id,
+                protocol_port=port
+            )['listeners']
+            # Create a counter of instances of port for each vTM identifier
+            identifier_port_counter = {}
+            processed_lbs = []  # Only count each LB once as they don't allow
+                                # duplicate ports
+            for listener in listeners:
+                for loadbalancer in listener['loadbalancers']:
+                    if loadbalancer['id'] in processed_lbs:
+                        continue
+                    processed_lbs.append(loadbalancer['id'])
+                    lb = neutron.show_loadbalancer(loadbalancer['id'])
+                    identifier = self.get_identifier(lb['loadbalancer'])
+                    try:
+                        identifier_port_counter[identifier] += 1
+                    except KeyError:
+                        identifier_port_counter[identifier] = 1
+            this_identifier = self.get_identifier(lb['loadbalancer'])
+            # If there is more than one listener on this vTM using the
+            # port, exit the function without removing it from sec group
+            if identifier_port_counter[this_identifier] > 1:
+                return False
         # Get the name of the security group for the "loadbalancer"
         sec_grp_name = "lbaas-%s" % identifier
         # Get the security group
-        neutron = self.get_neutron_client()
         sec_grp = neutron.list_security_groups(
             name=sec_grp_name
         )['security_groups'][0]
@@ -482,6 +511,21 @@ class OpenStackInterface(object):
                 and rule['protocol'] == protocol:
                 neutron.delete_security_group_rule(rule['id'])
                 break
+
+    def get_identifier(self, lb):
+        if isinstance(lb, dict):
+            subnet_id = lb['vip_subnet_id']
+            tenant_id = lb['tenant_id']
+        else:
+            subnet_id = lb.vip_subnet_id
+            tenant_id = lb.tenant_id
+        if subnet_id in cfg.CONF.lbaas_settings.shared_subnets:
+            identifier = hashlib.sha1(
+                "{}-{}".format(subnet_id, tenant_id)
+            ).hexdigest()
+        else:
+            identifier = subnet_id
+        return identifier
 
     def create_floatingip(self, port_id):
         neutron = self.get_neutron_client()

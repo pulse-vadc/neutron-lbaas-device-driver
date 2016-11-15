@@ -180,7 +180,7 @@ class vTMDeviceDriverCommon(object):
         vtm.vserver.create(listener.id, config=vserver_config)
         # Modify Neutron security group to allow access to data port...
         if use_security_group:
-            identifier = self._get_identifier(listener.loadbalancer)
+            identifier = self.get_identifier(listener.loadbalancer)
             if not old or old.protocol_port != listener.protocol_port:
                 protocol = 'udp' if listener.protocol == "UDP" else 'tcp'
                 self.openstack_connector.allow_port(
@@ -220,7 +220,7 @@ class vTMDeviceDriverCommon(object):
                 vtm.rate_class.delete(listener.id)
         if use_security_group:
             # Delete security group rule for the listener port/protocol
-            identifier = self._get_identifier(listener.loadbalancer)
+            identifier = self.get_identifier(listener.loadbalancer)
             protocol = 'udp' if listener.protocol == "UDP" else 'tcp'
             self.openstack_connector.block_port(
                 listener.loadbalancer, listener.protocol_port, identifier, protocol
