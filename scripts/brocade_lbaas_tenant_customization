@@ -36,13 +36,13 @@ ACTIONS:
     get         - gets a specific customization of the tenant
     set         - creates/updates a customization for the tenant
     delete      - deletes a customization for the tenant
-    initialize  - creates the tenant customization table in th specified database
+    initialize  - creates the tenant customization table in the specified database
     fields      - print out the LBaaS configuration fields that are customizable
 
 
 
 For this tool to work, it must have access to the customizations database.
-This can be a table in the Neutron database, or a seperate one. The path to
+This can be a table in the Neutron database, or a separate one. The path to
 the database can be supplied in one of three ways:
 
 1) With the --db=<DB_PATH> parameter

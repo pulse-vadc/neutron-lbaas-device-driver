@@ -174,9 +174,9 @@ question_chain = {
                            "next_link": "vtm_private_mtu"}])
     ],
     "vtm_private_ha_specify_az": [
-        Question("Please specify the name of the Availibility Zone for "
+        Question("Please specify the name of the Availability Zone for "
                  "primary vTMs", "lbaas_settings", "primary_az"),
-        Question("Please specify the name of the Availibility Zone for "
+        Question("Please specify the name of the Availability Zone for "
                  "secondary vTMs", "lbaas_settings", "secondary_az",
                  next_link="vtm_private_mtu")
     ],
@@ -346,7 +346,7 @@ def main():
     except IndexError:
         print "\n%s" % config_text
     except Exception as e:
-        print "\nError occured writing config to file: %s" % e
+        print "\nError occurred writing config to file: %s" % e
         print "Dumping to screen instead...\n"
         print config_text
 
