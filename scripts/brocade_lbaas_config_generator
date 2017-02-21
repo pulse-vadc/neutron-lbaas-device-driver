@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 #
-# Copyright 2016 Brocade Communications Systems, Inc.  All rights reserved.
+# Copyright 2014 Brocade Communications Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -19,8 +19,10 @@
 
 from getpass import getpass
 import socket
+from subprocess import call
 import sys
 
+config_data = {}
 
 class InvalidIpAddressError(Exception):
     def __init__(self, ip):
@@ -29,12 +31,15 @@ class InvalidIpAddressError(Exception):
 
 class Question(object):
     class Answer(object):
-        def __init__(self, value, next_link):
+        def __init__(self, value, next_link, action=None, action_data=None):
             self.value = value
             self.next_link = next_link
+            self.action = action
+            self.action_data = action_data
 
     def __init__(self, text, section, field_name, options=None, default=None,
-                 masked=False, var_type=None, next_link=None):
+                 masked=False, var_type=None, next_link=None, action=None,
+                 action_data=None):
         self.text = text
         self.section = section
         self.field_name = field_name
@@ -43,68 +48,77 @@ class Question(object):
         self.masked = masked
         self.var_type = var_type
         self.next_link = next_link
+        self.action = action
+        self.action_data = action_data
 
     def ask(self):
         print "\n%s" % self.text
         if self.options:
             for i, opt in enumerate(self.options, 1):
                 print "\t%s) %s" % (i, opt['name'])
-            ans = 0
+            answer = 0
             while True:
                 try:
-                    ans = int(raw_input(
+                    answer = int(raw_input(
                         "Please enter your choice [1-%s]: " % len(self.options)
                     ))
-                    if 1 <= ans <= len(self.options):
+                    if 1 <= answer <= len(self.options):
                         break
                 except ValueError:
-                    ans = 0
+                    answer = 0
                 print("Invalid input, please enter a number "
                       "in the range 1 to %s" % len(self.options))
-            return self.Answer(
-                self.options[ans - 1]['value'],
-                self.options[ans - 1]['next_link']
-            )
+            try:
+                next_l = self.options[answer - 1]['next_link']
+            except KeyError:
+                next_l = self.next_link
+            return self.Answer(self.options[answer - 1]['value'], next_l)
         else:
             while True:
                 if self.default:
-                    ans = raw_input(
+                    answer = raw_input(
                         "Input%s:" % " (Default=%s)" % self.default or ""
                     ) or self.default
                 else:
-                    ans = ""
-                    while ans == "":
+                    answer = ""
+                    while answer == "":
                         if self.masked:
-                            ans = getpass("Input (hidden): ")
+                            answer = getpass("Input (hidden): ")
                         else:
-                            ans = raw_input("Input: ")
-                        if ans == "":
+                            answer = raw_input("Input: ")
+                        if answer == "":
                             print "This setting has no default; " + \
                                   "please enter a value: "
                 if self.var_type is not None:
                     try:
-                        self.var_type(ans)
-                        return self.Answer(ans, self.next_link)
+                        self.var_type(answer)
                     except ValueError:
                         print "Invalid input: must be %s" % self.var_type
+                        continue
                     except InvalidIpAddressError as e:
                         print "Invalid IP address %s specified" % e.ip
-                else:
-                    return self.Answer(ans, self.next_link)
+                        continue
+                return self.Answer(
+                    answer, self.next_link, self.action, self.action_data
+                )
+
+
+def ip_address(ip_addr):
+    if ip_addr in ["0.0.0.0", "255.255.255.255"]:
+        raise InvalidIpAddressError(ip_addr)
+    try:
+        socket.inet_pton(socket.AF_INET, ip_addr)
+    except:
+        try:
+            socket.inet_pton(socket.AF_INET6, ip_addr)
+        except:
+            raise InvalidIpAddressError(ip_addr)
 
 
 def ip_address_list(ip_list):
     ip_addresses = [ip.strip() for ip in ip_list.split(",")]
     for ip in ip_addresses:
-        if ip in ["0.0.0.0", "255.255.255.255"]:
-            raise InvalidIpAddressError(ip)
-        try:
-            socket.inet_pton(socket.AF_INET, ip)
-        except:
-            try:
-                socket.inet_pton(socket.AF_INET6, ip)
-            except:
-                raise InvalidIpAddressError(ip)
+        ip_address(ip)
 
 
 question_chain = {
@@ -117,36 +131,81 @@ question_chain = {
                       "next_link": "vtm_private"}])
     ],
     "vtm_shared": [
-        Question("Please provide a comma-separated list of all vTM "
+        Question("Please provide a comma-seperated list of all vTM "
                  "management IPs in your cluster:", "lbaas_settings",
                  "admin_servers", var_type=ip_address_list),
         Question("What is the username for the vTM cluster admin user?",
                  "vtm_settings", "username", default="admin"),
         Question("What is the password for the vTM cluster admin user?",
                  "vtm_settings", "password", masked=True),
-        Question("Please provide a comma-separated list of Neutron port "
+        Question("Please provide a comma-seperated list of Neutron port "
                  "IDs that represent the interfaces for each vTM on which "
                  "VIPs will listen:", "lbaas_settings", "ports"),
         Question("How many passive Traffic IP Group members should there be?",
                  "lbaas_settings", "passive_vtms", var_type=int,
-                 next_link="vtm_all_vtmsettings")
+                 next_link="vtm_all_override_settings")
     ],
     "vtm_private": [
         Question("Which deployment model do you wish to use?",
                  "lbaas_settings", "deployment_model", options=[
-                     {"name": "A vTM per tenant",
-                      "value": "PER_TENANT", "next_link": None},
+                     {"name": "A vTM per tenant", "value": "PER_TENANT"},
                      {"name": "A vTM per loadbalancer object (VIP)",
-                      "value": "PER_LOADBALANCER", "next_link": None}]),
+                      "value": "PER_LOADBALANCER"}]),
         Question("How should vTMs be deployed?", "lbaas_settings",
                  "deploy_ha_pairs", options=[
-                     {"name": "As single instances",
-                      "value": False, "next_link": None},
-                     {"name": "As HA pairs",
-                      "value": True, "next_link": None}]),
-        Question("Please provide a comma-separated list of Services Director "
-                 "management IPs:",
-                 "lbaas_settings", "admin_servers", var_type=ip_address_list),
+                     {"name": "As single instances", "value": False,
+                      "next_link": "vtm_private_mtu"},
+                     {"name": "As HA pairs", "value": True,
+                      "next_link": "vtm_private_ha_instance_separation"}])
+    ],
+    "vtm_private_ha_instance_separation": [
+        Question("Do you wish to use the Nova scheduler 'different_host' "
+                 "hint to ensure primary and secondary instances are created "
+                 "on different compute hosts (N.B. select 'No' if you only have "
+                 "one compute host or a failure will occur)?",
+                 "lbaas_settings", "allow_different_host_hint",
+                 options=[{"name": "Yes", "value": True},
+                          {"name": "No", "value": False}]),
+        Question("Do you wish to specify Availability Zones for primary and "
+                 "secondary vTM instances?", "lbaas_settings", "specify_az",
+                 options=[{"name": "Yes", "value": True, 
+                           "next_link": "vtm_private_ha_specify_az"},
+                          {"name": "No", "value": False, 
+                           "next_link": "vtm_private_mtu"}])
+    ],
+    "vtm_private_ha_specify_az": [
+        Question("Please specify the name of the Availibility Zone for "
+                 "primary vTMs", "lbaas_settings", "primary_az"),
+        Question("Please specify the name of the Availibility Zone for "
+                 "secondary vTMs", "lbaas_settings", "secondary_az",
+                 next_link="vtm_private_mtu")
+    ],
+    "vtm_private_mtu": [
+        Question("What MTU should be used by the vTM network interfaces?",
+                 "vtm_settings", "mtu", options=[
+                     {"name": "1500 (local/flat/VLAN)",
+                      "value": 1500, "next_link": "vtm_private_infra"},
+                     {"name": "1476 (GRE)",
+                      "value": 1476, "next_link": "vtm_private_infra"},
+                     {"name": "1450 (VXLAN)",
+                      "value": 1450, "next_link": "vtm_private_infra"},
+                     {"name": "Custom", "value": "",
+                      "next_link": "vtm_private_mtu_custom"}])
+    ],
+    "vtm_private_mtu_custom": [
+        Question("Enter custom MTU value:", "vtm_settings", "mtu",
+                 var_type=int, next_link="vtm_private_infra")
+    ],
+    "vtm_private_infra": [
+        Question("What is the Service Endpoint Address of your "
+                 "Services Director cluster?",
+                 "lbaas_settings", "service_endpoint_address",
+                 var_type=ip_address),
+        Question("Please provide a comma-seperated list of source IP "
+                 "addresses from which vTM instances will receive "
+                 "configuration calls: ",
+                 "lbaas_settings", "configuration_source_ips",
+                 var_type=ip_address_list),
         Question("What is the Glance ID of the vTM image to use?",
                  "lbaas_settings", "image_id"),
         Question("What is the Nova ID of the flavor to use for vTMs? "
@@ -182,25 +241,50 @@ question_chain = {
         Question("Which Services Director \"feature_pack\" resource should "
                  "each vTM use?",
                  "services_director_settings", "feature_pack",
-                 next_link="vtm_private_vtmsettings")
+                 next_link="vtm_private_gui_access")
     ],
-    "vtm_private_vtmsettings": [
+    "vtm_private_gui_access": [
         Question("Give tenants read-only access to the vTM GUI?",
                  "vtm_settings", "gui_access", options=[
-                     {"name": "Yes", "value": True, "next_link": None},
-                     {"name": "No", "value": False, "next_link": None}]),
+                     {"name": "Yes", "value": True,
+                      "next_link": "vtm_private_ssh_port"},
+                     {"name": "No", "value": False,
+                      "next_link": "vtm_private_timezone"}])
+    ],
+    "vtm_private_ssh_port": [
+        Question("Which port would you like the vTM admin SSH server "
+                 "to run on?  NB. Users will not be able to create services "
+                 "on this port.",
+                  "vtm_settings", "ssh_port", default=22, var_type=int,
+                  next_link="vtm_private_timezone")
+    ],
+    "vtm_private_timezone": [
         Question("What timezone are the vTMs in?",
-                 "vtm_settings", "timezone", default="Europe/London"),
-        Question("Please provide a comma-separated list of your nameservers:",
+                 "vtm_settings", "timezone", default="UTC"),
+        Question("Please provide a comma-seperated list of your nameservers:",
                  "vtm_settings", "nameservers", var_type=ip_address_list,
-                 next_link="vtm_all_vtmsettings"),
+                 next_link="vtm_all_override_settings"),
+    ],
+    "vtm_all_override_settings": [
+        Question("Enable per-tenant configuration customizations database?",
+                 "lbaas_settings", "allow_tenant_customizations", options=[
+                     {"name": "Yes", "value": True,
+                      "next_link": "vtm_all_override_database"},
+                     {"name": "No", "value": False,
+                      "next_link": "vtm_all_vtmsettings"}])
+    ],
+    "vtm_all_override_database":[
+        Question("What is the connection string for customization database "
+                 "(<db_type>://<username>:<password>@<db_host>/<db_name>)? ",
+                 "lbaas_settings", "tenant_customizations_db", 
+                 next_link="vtm_all_vtmsettings")
     ],
     "vtm_all_vtmsettings": [
         Question("Should HTTPS off-load be supported? (Select 2 if Barbican "
                  "is not available)?",
                  "lbaas_settings", "https_offload", options=[
-                     {"name": "Yes", "value": True, "next_link": None},
-                     {"name": "No", "value": False, "next_link": None}]),
+                     {"name": "Yes", "value": True},
+                     {"name": "No", "value": False}]),
         Question("Which TCP port does the vTM REST API listen on?",
                  "vtm_settings", "rest_port", default="9070",
                  var_type=int, next_link="vtm_all_oscredentials"),
@@ -212,13 +296,13 @@ question_chain = {
                  "lbaas_settings", "openstack_password", masked=True),
         Question("Which Keystone version should be used?",
                  "lbaas_settings", "keystone_version", options=[
-                     {"name": "v2", "value": "2", "next_link": None},
-                     {"name": "v3", "value": "3", "next_link": None}])
+                     {"name": "v2", "value": "2"},
+                     {"name": "v3", "value": "3"}], next_link=None)
     ]
 }
 
 
-def format_config(config_data):
+def format_config():
     file_text = ""
     for section, parameters in config_data.iteritems():
         file_text += "[%s]\n" % section
@@ -231,6 +315,15 @@ def format_config(config_data):
 def execute_question_chain(index):
     for question in question_chain[index]:
         answer = question.ask()
+        if answer.action is not None:
+            if answer.action == "run_cmd":
+                if answer.value is None:
+                    cmd = answer.action_data
+                else:
+                    cmd = answer.action_data % answer.value
+            elif answer.action == "write_file":
+                with open(answer.action_data, "w") as action_file:
+                    action_file.write(answer.value)
         if answer.value is not None:
             try:
                 config_data[question.section][question.field_name] = \
@@ -241,13 +334,11 @@ def execute_question_chain(index):
                     answer.value
         if answer.next_link is not None and answer.next_link != index:
             execute_question_chain(answer.next_link)
-    #return config_data
 
 
-if __name__ == "__main__":
-    config_data = {}
+def main():
     execute_question_chain("start")
-    config_text = format_config(config_data)
+    config_text = format_config()
     try:
         with open(sys.argv[1], "w") as config_file:
             config_file.write(config_text)
@@ -255,6 +346,10 @@ if __name__ == "__main__":
     except IndexError:
         print "\n%s" % config_text
     except Exception as e:
-        print "\nError occurred writing config to file: %s" % e
+        print "\nError occured writing config to file: %s" % e
         print "Dumping to screen instead...\n"
         print config_text
+
+
+if __name__ == "__main__":
+    main()

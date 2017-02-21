@@ -1,0 +1,194 @@
+#!/usr/bin/python
+
+from brocade_neutron_lbaas_tenant_customizations_db.helper import \
+     BrocadeLbaasTenantCustomizationsDatabaseHelper as db_helper
+import os
+import sys
+
+
+def help(msg=None):
+    if msg:
+        print "\nError: %s" % msg
+    print """
+Usage:
+
+# brocade_lbaas_tenant_customization <ACTION> [--db=<DB_PATH>] [OTHER_PARAMETERS]
+
+ACTIONS:
+    list        - lists all customizations for the specified tenant
+    get         - gets a specific customization of the tenant
+    set         - creates/updates a customization for the tenant
+    delete      - deletes a customization for the tenant
+    initialize  - creates the tenant customization table in th specified database
+    fields      - print out the LBaaS configuration fields that are customizable
+
+
+
+For this tool to work, it must have access to the customizations database.
+This can be a table in the Neutron database, or a seperate one. The path to
+the database can be supplied in one of three ways:
+
+1) With the --db=<DB_PATH> parameter
+2) In the BROCADE_LBAAS_DB_PATH environment variable
+3) In the /etc/brocade_lbaas_tenant_customizations file
+
+The path must be in the following format:
+
+<DB_TYPE>://<USERNAME>:<PASSWORD>@<DB_HOST>/<DB_NAME>
+
+Eg.
+
+mysql://root:P@ssword1@localhost/neutron
+
+
+
+OTHER_PARAMETERS:
+
+    For "list":
+        --tenant-id=<TENANT_KEYSTONE_ID>
+
+    For "get":
+        --tenant-id=<TENANT_KEYSTONE_ID>
+        --section=<CONFIG_SECTION>
+        --parameter=<CONFIG_PARAMETER>
+
+    For "set"
+        --tenant-id=<TENANT_KEYSTONE_ID>
+        --section=<CONFIG_SECTION>
+        --parameter=<CONFIG_PARAMETER>
+        --value=<VALUE>
+        --force=True (optional) Does not prompt for confirmation on overwrites
+     
+    For "delete":
+        --tenant-id=<TENANT_KEYSTONE_ID>
+        --section=<CONFIG_SECTION>
+        --parameter=<CONFIG_PARAMETER>
+
+
+    TENANT_KEYSTONE_ID: OpenStack UID of the tenant as specified in Keystone
+    CONFIG_SECTION: one of "lbaas_settings", "vtm_settings", "services_director_settings"
+    CONFIG_PARAMETER: name of the parameter within the specified section
+    VALUE: value to set customized parameter to
+
+"""
+    if msg:
+        sys.exit(1)
+    sys.exit(0)
+
+
+def main(argv):
+    try:
+        # Check that a command has been passed
+        try:
+            command = argv[1]
+        except IndexError:
+            help("no command specified.")
+
+        # Break passed parameters up into a dictionary
+        try:
+            args = {
+                arg.split("=")[0][2:].replace("-", "_"):
+                arg.split("=")[1].strip()
+                for arg in argv[2:]
+            }
+        except IndexError:
+            print ("\nPlease ensure you put '=' between parameter "
+                   "names and values.\n")
+            sys.exit(1)
+
+        try:
+            tenant_id = args["tenant_id"].replace("-", "")
+        except KeyError:
+            pass
+        
+        # Initialize the database helper class
+        db = None
+        if args.get("db") is not None:
+            db = db_helper(args['db'])
+        elif os.environ.get("BROCADE_LBAAS_DB_PATH") is not None:
+            db = db_helper(os.environ["BROCADE_LBAAS_DB_PATH"])
+        elif os.path.isfile("/etc/brocade_lbaas_tenant_customizations"):
+            with open("/etc/brocade_lbaas_tenant_customizations") as f:
+                db_path = f.read()
+            db = db_helper(db_path.strip())
+
+        if not db and argv[1] != "initialize":
+            help("Unable to determine database connection path.")
+            sys.exit(1)
+
+        # Execute requested operation... 
+        if command == "list":
+            # Print a list of all customizations for the given tenant
+            customizations = db.get_all_tenant_customizations(
+                args['tenant_id']
+            )
+            print "\nCustomizations for tenant %s" % args['tenant_id']
+            for section, settings in customizations.iteritems():
+                print "\n%s:" % section
+                for param, value in settings.iteritems():
+                    print "\t%s = %s" % (param, value)
+            print
+        elif command == "get":
+            # Print a specific customization for the given tenant
+            value = db.get_customization(
+                args['tenant_id'], args['section'], args['parameter']
+            )
+            print "\n%s->%s = %s\n" % (
+                args['section'], args['parameter'], value
+            )
+        elif command == "set":
+            # Set a specific customization for the given tenant
+            if bool(args.get("force")) is not True:
+                customization = db.get_customization(
+                    args['tenant_id'], args['section'], args['parameter']
+                )
+                if customization:
+                    response = raw_input(
+                        "Overwrite existing value '%s'? [y/n]: " % customization
+                    )
+                    if response.lower().strip() != "y":
+                        sys.exit(0)
+            db.set_customization(
+                args['tenant_id'], args['section'], args['parameter'],
+                args['value']
+            )
+            print "\nDone!\n"
+        elif command == "delete":
+            db.delete_customization(
+                tenant_id, args['section'], args['parameter']
+            )
+            print "\nDone!\n"
+        elif command == "initialize":
+            # Create the database table to hold tenant customizations
+            db_path = args['db']
+            try:
+                with open("/etc/brocade_lbaas_tenant_customizations", "w") as f:
+                    f.write(db_path)
+            except IOError:
+                print ("\nThere was an error writing to "
+                       "/etc/brocade_lbaas_tenant_customizations. Please "
+                       "ensure you have the necessary permissions.\n")
+                sys.exit(1)
+            db = db_helper(db_path)
+            db.create_table()
+        elif command == "fields":
+            print
+            for section, fields in db.customizable_fields.iteritems():
+                print "Section '%s':" % section
+                for field in fields:
+                    print "\t%s" % field
+                print
+        else:
+            help()       
+    except KeyError as e:
+        help("missing parameter '--%s'" % (
+            str(e).replace("_", "-").replace("'", "")
+        ))
+    except Exception as e:
+        print "\nError: %s\n" % e
+        raise
+        sys.exit(1)
+ 
+
+if __name__ == "__main__":
+    main(sys.argv)
