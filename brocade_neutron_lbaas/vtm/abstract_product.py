@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2016 Brocade Communications Systems, Inc.  All rights reserved.
+# Copyright 2014 Brocade Communications Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -24,7 +24,9 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from threading import Thread
 from time import time, sleep
 from urllib import quote
-import urllib3
+
+from oslo_log import log as logging
+LOG = logging.getLogger(__name__)
 
 # Disable warnings for self-signed certs
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -110,11 +112,25 @@ class ConfigObject(object):
         self.connector("DELETE")
         try:
             del self._parent_list[self.name]
-        except AttributeError:
+        except (AttributeError, TypeError):
             pass
 
     def __str__(self):
         return json.dumps(self.to_dict())
+
+    def __getattr__(self, key):
+        if key.startswith("_"):
+            return
+        object_data = json.loads(self.connector("GET"))
+        if "__" in key:
+            section, parameter = key.split("__")
+        else:
+            section = "basic"
+            parameter = key
+        try:
+            return object_data["properties"][section][parameter]
+        except TypeError:
+            return None
 
 
 class TextOnlyObject(ConfigObject):
@@ -365,7 +381,9 @@ class ProductInstance(ConfigObject):
 
     def test_connectivity(self):
         try:
-            response = self.http_session.get(self.connectivity_test_url)
+            response = self.http_session.get(
+                self.connectivity_test_url, timeout=3
+            )
         except Exception as e:
             return False
         if response.status_code == 200:

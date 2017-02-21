@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2016 Brocade Communications Systems, Inc.  All rights reserved.
+# Copyright 2014 Brocade Communications Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -22,9 +22,13 @@ from abstract_product import ConfigObject, ConfigObjectList, SubList,\
                              ProductInstance
 import json
 
+from oslo_log import log as logging
+
+LOG = logging.getLogger(__name__)
 ###############################################################################
 #                           Abstract config object classes                    #
 ###############################################################################
+
 
 
 class vTMConfigObject(ConfigObject):
@@ -119,6 +123,13 @@ class Statistics(object):
             setattr(self, section, self.Section(stats_url, section, connector))
 
     class Section(dict):
+
+        class NoCountersReturnedError(Exception):
+            pass
+
+        class NoDataAvailableError(Exception):
+            pass
+
         def __init__(self, stats_url, section, connector):
             self.stats_url = stats_url
             self.section = section
@@ -129,9 +140,17 @@ class Statistics(object):
                 return self[name]
 
         def __getitem__(self, name):
+            response = self.connector.get(
+                "{}/{}".format(self.stats_url, self.section)
+            )
+            if name not in [obj['name'] for obj in response.json()['children']]:
+                raise self.NoDataAvailableError()
             response = self.connector.get("%s/%s/%s" % (
                 self.stats_url, self.section, name
             ))
+            if (response.status_code == 400
+            and response.json()['error_id'] == "statistics.no_counters"):
+                raise self.NoCountersReturnedError()
             return self.ConfigItem(response.json()['statistics'])
 
         def __getattr__(self, name):
@@ -262,7 +281,7 @@ GlobalSettings = ConfigObjectFactory(
 )
 
 SecuritySettings = ConfigObjectFactory(
-    "SecuritySettings", ["access"], vTMConfigObject
+    "SecuritySettings", [], vTMConfigObject
 )
 
 
@@ -462,6 +481,9 @@ class vTM(ProductInstance):
     def __init__(self, base_url, username, password, initialize_config=False,
                  connectivity_test_url=None):
         url = "%s/config/active" % base_url
+        self.uuid_test_url = "{}/status/local_tm/information".format(
+            base_url
+        )
         super(vTM, self).__init__(
             url, username, password, vTMConfigObjectList,
             initialize_config, connectivity_test_url
@@ -470,18 +492,35 @@ class vTM(ProductInstance):
         # TODO: have object-specific stats available through the object itself
         self.stats_url = "%s/status/local_tm/statistics" % base_url
         self.statistics = Statistics(self.stats_url, self.http_session)
+        # Initialize config object that only exist as single entities:
+        global_conn = self.get_object_connector(
+            GlobalSettings, "global_settings"
+        )
+        security_conn = self.get_object_connector(SecuritySettings, "security")
         if initialize_config:
-            # Initialize config object that only exist as single entities:
-            #   Global settings....
-            conn = self.get_object_connector(GlobalSettings, "global_settings")
             self.global_settings = GlobalSettings(
-                "GlobalSettings", config=conn()
+                "GlobalSettings", config=global_conn()
             )
-            self.global_settings.connector = conn
-            #   Security
-            conn = self.get_object_connector(SecuritySettings, "security")
-            self.security = SecuritySettings("SecuritySettings", config=conn())
-            self.security.connector = conn
+            self.security = SecuritySettings(
+                "SecuritySettings", config=security_conn()
+            )
+        else:
+            self.global_settings = GlobalSettings("GlobalSettings")
+            self.security = SecuritySettings("SecuritySettings")
+        self.global_settings.connector = global_conn
+        self.security.connector = security_conn
+
+    def test_uuid_set(self):
+        try:
+            response = self.http_session.get(
+                self.uuid_test_url, timeout=3
+            )
+        except Exception as e:
+            return False
+        if response.status_code == 200:
+            if response.json()['information']['uuid']:
+                return True
+        return False
 
     def get_nodes_in_cluster(self):
         response = self.http_session.get("%s/traffic_managers" % (
