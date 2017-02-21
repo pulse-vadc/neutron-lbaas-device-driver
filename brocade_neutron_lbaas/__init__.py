@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2016 Brocade Communications Systems, Inc.  All rights reserved.
+# Copyright 2014 Brocade Communications Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -17,6 +17,7 @@
 # Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
 #
 
+from neutron_lbaas._i18n import _
 from oslo_config import cfg
 from oslo_log import log as logging
 
@@ -73,4 +74,4 @@ else:
     raise Exception(
         _("Unknown Brocade product '%s'" % cfg.CONF.lbaas_settings.product)
     )
-adx_device_driver_v2 = product_driver
+device_driver = product_driver
