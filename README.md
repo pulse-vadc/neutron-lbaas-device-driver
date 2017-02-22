@@ -1,8 +1,8 @@
 ## Brocade vADC device driver for OpenStack Neutron LBaaS ##
-This is the OpenStack Neutron LBaaS device driver for Brocade Virtual Application Delivery Controller (formerly SteelApp).  It plugs into the Brocade LBaaS driver which has shipped with OpenStack since the Kilo release.
+This is the OpenStack Neutron LBaaS device driver for Brocade Virtual Application Delivery Controller (formerly SteelApp).  
 
 ### Version ###
-This is beta version **beta/mitaka** update 2016-11.
+This is driver version **stable/mitaka** update 2017-02.
 
 ***Brocade recommend you always use the most recent version of the driver for any given OpenStack release.***
 
@@ -12,10 +12,11 @@ This is beta version **beta/mitaka** update 2016-11.
 
 ### Changelog ###
 
-2016-11-08:
+2017-02-22:
 * Support for OpenStack Mitaka (not backward-compatible with OpenStack Liberty)
 * Support for L7 rules (AKA request-based routing)
 * In HA mode, Administrator can specify different Availability Zones for primary and secondary vTM instances
+* In HA mode, Nova's _different\_host_ scheduler hint can be used to create the vTM instances on diffrent compute nodes
 * Certain global settings can be overriden on a per-tenant basis
 * Listener "connection-limit" now refers to the maximum concurrent connections allowed to the listener
 
