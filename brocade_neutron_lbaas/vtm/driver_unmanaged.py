@@ -78,9 +78,6 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 sleep(5)
             self.update_loadbalancer(lb, None)
             vtm = self._get_vtm(hostname)
-            #self._create_bw_class(vtm, lb)
-            #self._create_bw_trafficscript(vtm)
-            self._update_sd_bandwidth(vtm, hostname)
             description_updater_thread = DescriptionUpdater(
                 self.openstack_connector, vtm, lb, hostname
             )
@@ -93,10 +90,10 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
 
     def update_loadbalancer(self, lb, old):
         """
-        Creates or updates a TrafficIP group for the loadbalancer VIP address.
+        Creates or updates a TrafficIP group for the loadbalancer VIP address,
+        and updates bandwidth allocation if necessary.
         The VIP is added to the allowed_address_pairs of the vTM's
         Neutron port to enable it to receive traffic to this address.
-        NB. This only function only has a purpose in PER_TENANT deployments!
         """
         LOG.debug(_("\nupdate_loadbalancer(%s): called" % lb.id))
         try:
@@ -119,6 +116,8 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 self.openstack_connector.add_ip_to_ports(
                     lb.vip_address, port_ids
                 )
+            if old and old.bandwidth != lb.bandwidth:
+                self._update_sd_bandwidth(hostname, lb.bandwidth)
             LOG.debug(_("\nupdate_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in update_loadbalancer(%s): %s" % (lb.id, e)))
@@ -154,9 +153,6 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                 self.openstack_connector.delete_ip_from_ports(
                     lb.vip_address, port_ids
                 )
-                # Adjust the bandwidth allocation of the vTM
-                #self._delete_bw_class(vtm, lb)
-                self._update_sd_bandwidth(vtm, hostname)
             LOG.debug(_("\ndelete_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in delete_loadbalancer(%s): %s" % (lb.id, e)))
@@ -360,41 +356,18 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
 # MISC #
 ########
 
-    def _update_sd_bandwidth(self, vtm, hostnames):
+    def _update_sd_bandwidth(self, hostnames, bandwidth):
         """
-        Set Services Director bandwidth allocation to 
-        [per-lb bandwidth] * [number of TIPs on instance.]
+        Set Services Director bandwidth allocation
         """
         if isinstance(hostnames, basestring):
             hostnames = [hostnames]
-        num_of_tips = len(vtm.tip_groups.list())
-        tip_bandwidth = cfg.CONF.services_director_settings.bandwidth
-        total_bandwidth = num_of_tips * tip_bandwidth
         services_director = self._get_services_director()
         for hostname in hostnames:
-            instance = services_director.unmanaged_instance.create(
+            services_director.unmanaged_instance.create(
                 hostname,
-                bandwidth=total_bandwidth
+                bandwidth=int(bandwidth)
             )
-
-    def _create_bw_class(self, vtm, lb):
-        vtm.bandwidth_class.create(
-            lb.vip_address,
-            maximum=(cfg.CONF.services_director_settings.bandwidth * 1000)
-        )
-
-    def _delete_bw_class(self, vtm, lb):
-        vtm.bandwidth_class.delete(lb.vip_address)
-
-    def _create_bw_trafficscript(self, vtm):
-        vtm.rule.create(
-            "bandwidth_rule",
-            rule_text="response.setBandwidthClass(request.getLocalIP());"
-        )
-
-    def _touch_last_modified_timestamp(self, vtm):
-        timestamp = str(int(time() * 1000))
-        vtm.extra_file.create("last_update", file_text=timestamp)
 
     def _get_services_director(self):
         """
@@ -508,7 +481,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             ),
             rest_enabled=False,
             owner=lb.tenant_id,
-            bandwidth=cfg.CONF.services_director_settings.bandwidth,
+            bandwidth=int(lb.bandwidth),
             stm_feature_pack=cfg.CONF.services_director_settings.feature_pack
         )
         instance.start()

@@ -38,10 +38,10 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
     def update_loadbalancer(self, lb, old):
         LOG.debug(_("\nupdate_loadbalancer(%s): called" % lb.id))
         """
-        Creates or updates a TrafficIP group for the loadbalancer VIP address.
+        Creates or updates a TrafficIP group for the loadbalancer VIP address,
+        and updates instance bandwidth allocation if necessary.
         The VIP is added to the allowed_address_pairs of the vTM's
         Neutron port to enable it to receive traffic to this address.
-        NB. This only function only has a purpose in PER_TENANT deployments!
         """
         try:
             hostnames = self._get_hostname(lb)
@@ -69,6 +69,8 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                     self.openstack_connector.add_ip_to_ports(
                         lb.vip_address, port_ids
                     )
+            if old and old.bandwidth != lb.bandwidth:
+                self._update_sd_bandwidth(hostnames, lb.bandwidth)
             LOG.debug(_("\nupdate_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in update_loadbalancer(%s): %s" % (lb.id, e)))
@@ -104,9 +106,6 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                     self.openstack_connector.delete_ip_from_ports(
                         lb.vip_address, port_ids
                     )
-                # Adjust the bandwidth allocation of the vTM
-                #self._delete_bw_class(vtm, lb)
-                self._update_sd_bandwidth(vtm, hostnames)
             LOG.debug(_("\ndelete_loadbalancer(%s): completed!" % lb.id))
         except Exception as e:
             LOG.error(_("\nError in delete_loadbalancer(%s): %s" % (lb.id, e)))
@@ -201,7 +200,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                     ),
                     rest_enabled=False,
                     owner=lb.tenant_id,
-                    bandwidth=cfg.CONF.services_director_settings.bandwidth,
+                    bandwidth=int(lb.bandwidth),
                     stm_feature_pack=cfg.CONF.services_director_settings.
                                      feature_pack
                 )
