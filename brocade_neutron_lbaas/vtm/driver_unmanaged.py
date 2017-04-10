@@ -356,6 +356,10 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
 # MISC #
 ########
 
+    def _touch_last_modified_timestamp(self, vtm):
+        timestamp = str(int(time() * 1000))
+        vtm.extra_file.create("last_update", file_text=timestamp)
+
     def _update_sd_bandwidth(self, hostnames, bandwidth):
         """
         Set Services Director bandwidth allocation
