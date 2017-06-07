@@ -175,6 +175,8 @@ question_chain = {
         Question("Which port does the Services Director REST API listen on?",
                  "services_director_settings", "rest_port", default="8100", 
                  var_type=int),
+        Question("How much bandwidth (Mbps) should each vTM be allocated?",
+                 "services_director_settings", "bandwidth", var_type=int),
         Question("Which Services Director \"feature_pack\" resource should "
                  "each vTM use?",
                  "services_director_settings", "feature_pack",

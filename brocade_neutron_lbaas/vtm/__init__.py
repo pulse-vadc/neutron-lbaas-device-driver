@@ -82,6 +82,8 @@ lbaas_setting_opts = [
 services_director_setting_opts = [
     cfg.StrOpt('api_version', default="2.0",
                help=_('Version of Services Director REST API to use')),
+    cfg.IntOpt('bandwidth',
+               help=_('Bandwidth allowance for vTM instances')),
     cfg.StrOpt('feature_pack',
                help=_('Feature Pack resource for vTM instances')),
     cfg.StrOpt('fla_license', default="universal_v3",
@@ -174,6 +176,8 @@ else:
                 "Password of OpenStack admin user"
         },
         "services_director_settings": {
+            "bandwidth":
+                "Amount of bandwidth to allocate to each vTM instance",
             "feature_pack":
                 "Name of Services Director feature pack resource to use "
                 "for each vTM",
