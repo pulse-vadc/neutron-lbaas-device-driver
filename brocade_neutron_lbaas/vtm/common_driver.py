@@ -17,15 +17,12 @@
 # Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
 #
 
-from neutron_lbaas.common.cert_manager import CERT_MANAGER_PLUGIN
-from neutron_lbaas.common.tls_utils.cert_parser import get_host_names
 from oslo.config import cfg
 from oslo_log import log as logging
 from random import choice, randint
 from string import ascii_letters, digits
 
 LOG = logging.getLogger(__name__)
-certificate_manager = CERT_MANAGER_PLUGIN.CertManager
 
 
 class vTMDeviceDriverCommon(object):
@@ -106,76 +103,27 @@ class vTMDeviceDriverCommon(object):
         }}
         vserver_config['properties']['basic'].update(listen_on_settings)
         # Configure SSL termination...
-        if listener.protocol == "TERMINATED_HTTPS":
-            if cfg.CONF.lbaas_settings.https_offload is False:
-                raise Exception("HTTPS termination has been disabled by "
-                                "the administrator")
-            # Get cert from Barbican and upload to vTM
-            self._upload_certificate(vtm, listener.default_tls_container_id)
-            # certificate and initialize the SNI mapping table
+        if listener.https_offload == "YES":
+            vserver_config['properties']['basic']['protocol'] = "http"
             vserver_config['properties']['basic']['ssl_decrypt'] = True
             vserver_config['properties']['ssl'] = {
-                "ssl_cert_default": listener.default_tls_container_id,
+                "server_cert_default": listener.id,
                 "server_cert_host_mapping": []
             }
-            if listener.sni_containers:
-                for sni_container in listener.sni_containers:
-                    # Get cert from Barbican and upload to vTM
-                    cert = self._upload_certificate(
-                        vtm, sni_container.tls_container_id
-                    )
-                    # Get CN and subjectAltNames from certificate
-                    cert_hostnames = get_host_names(cert.get_certificate())
-                    # Add the CN and the certificate to the virtual server
-                    # SNI certificate mapping table
-                    (vserver_config['properties']['ssl']
-                                   ['server_cert_host_mapping']).append(
-                        {
-                            "host": cert_hostnames['cn'],
-                            "certificate": sni_container.tls_container_id
-                        }
-                    )
-                    # Add subjectAltNames to the mapping table if present
-                    try:
-                        for alt_name in cert_hostnames['dns_names']:
-                            (vserver_config['properties']['ssl']
-                                ['server_cert_host_mapping']).append(
-                                {
-                                    "host": alt_name,
-                                    "certificate":
-                                        sni_container.tls_container_id
-                                }
-                            )
-                    except TypeError:
-                        pass
-        # Configure connection limiting if set to 'requests_per_second'...
-        if cfg.CONF.lbaas_settings.connection_limit_mode == "requests_per_sec":
-            if listener.connection_limit < 1:
-                # Delete existing connection limiting settings if not required
-                if vtm.rate_class.get(listener.id):
-                    vtm.rate_class.delete(listener.id)
-                if vtm.rule.get("rate-%s" % listener.id):
-                    vtm.rule.delete("rate-%s" % listener.id)
-                vserver_config['properties']['basic']['request_rules'] = []
-            elif old is None \
-            or old.connection_limit != listener.connection_limit:
-                # Create connection limiting settings if required
-                vtm.rate_class.create(
-                    listener.id,
-                    max_rate_per_second=listener.connection_limit
-                )
-                vtm.rule.create(
-                    "rate-%s" % listener.id,
-                    rule_text='rate.use("%s");' % listener.id
-                )
-                vserver_config['properties']['basic']['request_rules'] = \
-                    ["rate-%s" % listener.id]
-        elif old is None or old.connection_limit != listener.connection_limit:
-            if listener.connection_limit > 0:
-                vserver_config['properties']['basic']['max_concurrent_connections'] = \
-                    listener.connection_limit
-            else:
-                vserver_config['properties']['basic']['max_concurrent_connections'] = 0
+            vtm.ssl_server_cert.create(
+                listener.id,
+                private=listener.https_private_key,
+                public=listener.https_public_key
+            )
+        elif old and old.https_offload == "YES":
+            vserver_config['properties']['basic']['ssl_decrypt'] = False
+            vtm.ssl_server_cert.delete(listener.id)
+        # Configure connection limiting...
+        if listener.connection_limit > 0:
+            vserver_config['properties']['basic']['max_concurrent_connections'] = \
+                listener.connection_limit
+        else:
+            vserver_config['properties']['basic']['max_concurrent_connections'] = 0
         # Create/update virtual server...
         vtm.vserver.create(listener.id, config=vserver_config)
         # Modify Neutron security group to allow access to data port...
@@ -195,29 +143,9 @@ class vTMDeviceDriverCommon(object):
         vs = vtm.vserver.get(listener.id)
         # Delete Virtual Server
         vs.delete()
-        # Delete associated SSL certificates if not still in use
-        if listener.protocol == "TERMINATED_HTTPS":
-            try:
-                tls_containers = [listener.default_tls_container_id] + \
-                                 listener.sni_containers
-            except TypeError:
-                tls_containers = [listener.default_tls_container_id]
-            for container in tls_containers:
-                cert_in_use = False
-                for vserver in vtm.vservers.list():
-                    vs = vtm.vserver.get(vserver)
-                    if vs.ssl__server_cert_default == container:
-                        cert_in_use = True
-                    for mapping in vs.ssl__server_cert_host_mapping:
-                        if mapping['certificate'] == container:
-                            cert_in_use = True
-                if cert_in_use is False:
-                    vtm.ssl_server_cert.delete(container)
-        # Clean up vTM connection-limiting config objects
-        if cfg.CONF.lbaas_settings.connection_limit_mode == "requests_per_sec":
-            if listener.connection_limit > 0:
-                vtm.rules.delete("rate-%s" % listener.id)
-                vtm.rate_class.delete(listener.id)
+        # Delete associated SSL certificates
+        if listener.https_offload == "YES":
+            vtm.ssl_server_cert.delete(listener.id)
         if use_security_group:
             # Delete security group rule for the listener port/protocol
             identifier = self.openstack_connector.get_identifier(
@@ -454,25 +382,3 @@ class vTMDeviceDriverCommon(object):
             chars = ascii_letters + digits
             return "".join(choice(chars) for _ in range(randint(12, 16)))
         return cfg.CONF.vtm_settings.admin_password
-
-    def _upload_certificate(self, vtm, container_id):
-        # Get the certificate from Barbican
-        cert = certificate_manager.get_cert(
-            container_id, service_name="Neutron LBaaS v2 Brocade provider"
-        )
-        # Check that the private key is not passphrase-protected
-        if cert.get_private_key_passphrase():
-            raise Exception(_(
-                "The vTM LBaaS provider does not support private "
-                "keys with a passphrase"
-            ))
-        # Add server certificate to any intermediates
-        try:
-            cert_chain = cert.get_certificate() + cert.get_intermediates()
-        except TypeError:
-            cert_chain = cert.get_certificate()
-        # Upload the certificate and key to the vTM
-        vtm.ssl_server_cert.create(
-            container_id, private=cert.get_private_key(), public=cert_chain
-        )
-        return cert
