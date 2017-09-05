@@ -76,6 +76,10 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
             self.update_loadbalancer(lb, None)
         elif deployment_model == "PER_LOADBALANCER":
             self._spawn_vtm(hostname, lb)
+        description_updater_thread = DescriptionUpdater(
+            self.openstack_connector, vtm, lb, hostname
+        )
+        description_updater_thread.start()
 
     @logging_wrapper
     def update_loadbalancer(self, lb, old):
@@ -556,3 +560,44 @@ class PollInstance(Thread):
     def join(self):
         super(PollInstance, self).join()
         return self._return
+
+
+class DescriptionUpdater(Thread):
+    def __init__(self, os_conn, vtm, lb, hostnames):
+        self.openstack_connector = os_conn
+        self.vtm = vtm
+        self.lb = lb
+        if isinstance(hostnames, basestring):
+            self.hostnames = [hostnames]
+        else:
+            self.hostnames = hostnames
+        super(DescriptionUpdater, self).__init__()
+
+    def run(self):
+        ip_addresses = []
+        if cfg.CONF.lbaas_settings.deploy_ha_pairs is True:
+            while True:
+                if len(self.vtm.traffic_managers.list()) == 2:
+                    break
+                sleep(3)
+        for hostname in self.hostnames:
+            tm = self.vtm.traffic_managers.get(hostname)
+            ip_addresses.append([
+                nic['addr'] for nic in tm.appliance__ip
+                if nic['name'] == "eth1"
+            ][0])
+        neutron = self.openstack_connector.get_neutron_client()
+        while True:
+            lb = neutron.show_loadbalancer(self.lb.id)
+            if lb['loadbalancer']['provisioning_status'] != "PENDING_CREATE":
+                break
+            sleep(3)
+        body = {"loadbalancer": {
+            "description": "{} {}".format(
+                self.lb.description,
+                "(vTMs: {}; VIP: {})".format(
+                    ", ".join(ip_addresses), self.lb.vip_address
+                )
+            )
+        }}
+        neutron.update_loadbalancer(self.lb.id, body)
