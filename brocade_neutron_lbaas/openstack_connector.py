@@ -347,7 +347,7 @@ class OpenStackInterface(object):
         neutron = self.get_neutron_client()
         sec_grp_data = {"security_group": {
             "name": "{}lbaas-{}".format("mgmt-" if mgmt_label else "", uuid),
-            "tenant_id": tenant_id
+            "tenant_id": self.lbaas_project_id
         }}
         sec_grp = neutron.create_security_group(sec_grp_data)
         # If GUI access is allowed, open up the GUI port
@@ -362,7 +362,7 @@ class OpenStackInterface(object):
             )
         # If mgmt_port, add the necessary rules to allow management traffic
         # i.e. allow each Services Director to access the REST port of the
-        # instance
+        # instance and allw SNMP access if enabled.
         if mgmt_port:
             # REST access
             source_list = (
@@ -375,6 +375,15 @@ class OpenStackInterface(object):
                     sec_grp['security_group']['id'],
                     port=cfg.CONF.vtm_settings.rest_port,
                     src_addr=socket.gethostbyname(server)
+                )
+            # SNMP access
+            for cidr in cfg.CONF.vtm_settings.snmp_allow_from:
+                self.create_security_group_rule(
+                    tenant_id,
+                    sec_grp['security_group']['id'],
+                    port=cfg.CONF.vtm_settings.snmp_port,
+                    protocol='udp',
+                    src_addr=cidr
                 )
         # If cluster, add necessary ports for intra-cluster comms
         if cluster is True:
@@ -907,6 +916,53 @@ class OpenStackInterface(object):
             ]
         }
 
+        # Configure eventing for SNMP traps
+        if cfg.CONF.vtm_settings.snmp_enabled is True:
+            cloud_config["write_files"].append({
+                "path": "/opt/zeus/zxtm/conf/actions/lbaas_snmp_trap",
+                "content": (
+                    "community       {}\n"
+                    "snmp!version    snmpv2c\n"
+                    "traphost        {}\n"
+                    "type    trap"
+                ).format(
+                    cfg.CONF.vtm_settings.snmp_community,
+                    cfg.CONF.vtm_settings.snmp_traphost
+                )
+            })
+            cloud_config["write_files"].append({
+                "path": "/opt/zeus/zxtm/conf/events/lbaas_event",
+                "content": 
+"""actions lbaas_snmp_trap
+type!faulttolerance!event_tags  activatealldead allmachinesok flipperbackendsworking dropipinfo flipperfrontendsworking activatedautomatically flipperrecovered flipperraiselocalworking flipperraiseosdrop flipperraiseothersdead flipperdadreraise machinerecovered machineok stateok multihostload dropipwarn pingbackendfail zclustermoderr stateconnfail pingfrontendfail pinggwfail flipperipexists pingsendfail statereadfail statebaddata stateunexpected machinefail machinetimeout flipperraiseremotedropped statetimeout statewritefail routingswfailurelimitreached clocknotmonotonic clockjump
+type!general!event_tags running autherror logdiskoverload confrepfailed confreptimeout fewfreefds restartrequired timemovedback numtipg-exceeded sslcrltoobig numnodes-exceeded numpools-exceeded zxtmswerror zxtmcpustarvation zxtmhighload childcommsfail appliance
+type!licensekeys!event_tags     licensestate-malformed bwlimited expiresoon15 expiresoon30 expiresoon60 expiresoon license-rejected-unauthorized-ts license-rejected-authorized-ts ssltpslimited tpslimited license-rejected-unauthorized license-rejected-authorized license-graceperiodexpired license-timedout-unauthorized license-timedout-authorized licensestate-write-failed license-timedout-unauthorized-ts license-timedout-authorized-ts license-explicitlydisabled-ts expired licensecorrupt license-unauthorized license-graceperiodexpired-ts
+type!licensekeys!object_names   *
+"""
+            })
+            cloud_config["write_files"].append({
+                "path": "/root/snmp-data",
+                "content": json.dumps(
+                    {"properties": {"snmp": {
+                        "enabled": True,
+                        "bind_ip": config_data['bind_ip'],
+                        "port": cfg.CONF.vtm_settings.snmp_port,
+                        "community": cfg.CONF.vtm_settings.snmp_community,
+                        "allow": cfg.CONF.vtm_settings.snmp_allow_from
+                    }}}
+                )
+            })
+            cloud_config["runcmd"].append(
+                'curl -k -X PUT -H "Content-Type: application/json" '
+                '--data @/root/snmp-data --user "admin:{0}" '
+                'https://{1}:{2}/api/tm/4.0/config/active/traffic_managers/{1}'
+                ''.format(
+                      config_data['password'],
+                      config_data['bind_ip'],
+                      cfg.CONF.vtm_settings.rest_port
+            ))
+            
+
         # Add static routes
         route_table = []
         for interface, routes in config_data['static_routes'].iteritems():
@@ -929,8 +985,9 @@ class OpenStackInterface(object):
         cloud_config["runcmd"].append(
             'curl -k -X PUT -H "Content-Type: application/json" '
             '--data @/root/routes-data --user "admin:{0}" '
-            'https://{1}:{2}/api/tm/2.0/config/active/traffic_managers/{1}'
-            ''.format(config_data['password'],
+            'https://{1}:{2}/api/tm/4.0/config/active/traffic_managers/{1}'
+            ''.format(
+                  config_data['password'],
                   config_data['bind_ip'],
                   cfg.CONF.vtm_settings.rest_port
         ))
