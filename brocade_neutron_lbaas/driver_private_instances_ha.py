@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
+# Matthew Geldert (mgeldert@pulsesecure.net), Pulse Secure, LLC
 #
 
 from driver_common import logging_wrapper
