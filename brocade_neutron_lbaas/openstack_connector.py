@@ -376,13 +376,14 @@ class OpenStackInterface(object):
                     src_addr=socket.gethostbyname(server)
                 )
             # SNMP access
-            for cidr in cfg.CONF.vtm_settings.snmp_allow_from:
-                self.create_security_group_rule(
-                    sec_grp['security_group']['id'],
-                    port=cfg.CONF.vtm_settings.snmp_port,
-                    protocol='udp',
-                    src_addr=cidr
-                )
+            if cfg.CONF.vtm_settings.snmp_enabled is True:
+                for cidr in cfg.CONF.vtm_settings.snmp_allow_from:
+                    self.create_security_group_rule(
+                        sec_grp['security_group']['id'],
+                        port=cfg.CONF.vtm_settings.snmp_port,
+                        protocol='udp',
+                        src_addr=cidr
+                    )
         # If cluster, add necessary ports for intra-cluster comms
         if cluster is True:
             self.create_security_group_rule(
