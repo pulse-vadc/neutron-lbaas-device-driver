@@ -80,7 +80,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverPrivateInstances):
         if not old or lb.vip_address != old.vip_address:
             for hostname in hostnames:
                 port_ids = self.openstack_connector.get_server_port_ids(
-                    lb.tenant_id, hostname
+                    hostname
                 )
                 self.openstack_connector.add_ip_to_ports(
                     lb.vip_address, port_ids
@@ -116,7 +116,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverPrivateInstances):
                     self._detach_subnet_port(vtm, hostnames, lb)
                 for hostname in hostnames:
                     port_ids = self.openstack_connector.get_server_port_ids(
-                        lb.tenant_id, hostname
+                        hostname
                     )
                     self.openstack_connector.delete_ip_from_ports(
                         lb.vip_address, port_ids
@@ -311,7 +311,6 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverPrivateInstances):
                 except:
                     pass
             self.openstack_connector.clean_up(
-                lb.tenant_id,
                 instances=vms,
                 security_groups=security_groups,
                 ports=port_ids

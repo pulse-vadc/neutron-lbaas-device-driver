@@ -67,8 +67,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
         )
         hostname = self._get_hostname(lb)
         if deployment_model == "PER_TENANT":
-            if not self.openstack_connector.vtm_exists(
-                lb.tenant_id, hostname):
+            if not self.openstack_connector.vtm_exists(hostname):
                 self._spawn_vtm(hostname, lb)
                 sleep(5)
             elif not self.openstack_connector.vtm_has_subnet_port(hostname,lb):
@@ -104,7 +103,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
             self._touch_last_modified_timestamp(vtm)
             if not old or lb.vip_address != old.vip_address:
                 port_ids = self.openstack_connector.get_server_port_ids(
-                    lb.tenant_id, hostname
+                    hostname
                 )
                 self.openstack_connector.add_ip_to_ports(
                     lb.vip_address, port_ids
@@ -140,7 +139,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
                     self._detach_subnet_port(vtm, hostname, lb)
                 # Remove allowed_address_pairs entry from remaining ports
                 port_ids = self.openstack_connector.get_server_port_ids(
-                    lb.tenant_id, hostname
+                    hostname
                 )
                 self.openstack_connector.delete_ip_from_ports(
                     lb.vip_address, port_ids
@@ -341,7 +340,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
         # Create and attach a new Neutron port to the instance
         port = self.openstack_connector.attach_port(hostname, lb)
         # Configure the interface on the vTM
-        mgmt_ip = self.openstack_connector.get_mgmt_ip(lb.tenant_id, hostname)
+        mgmt_ip = self.openstack_connector.get_mgmt_ip(hostname)
         tm_settings = vtm.traffic_manager.get(mgmt_ip)
         iface_list = tm_settings.appliance__if
         # Calculate the interface name that will be used
@@ -382,7 +381,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
     def _detach_subnet_port(self, vtm, hostname, lb):
         # Detach and delete Neutron port from the instance
         port_ip_address = self.openstack_connector.detach_port(hostname, lb)
-        mgmt_ip = self.openstack_connector.get_mgmt_ip(lb.tenant_id, hostname)
+        mgmt_ip = self.openstack_connector.get_mgmt_ip(hostname)
         tm_settings = vtm.traffic_manager.get(mgmt_ip)
         # Get the name of the interface to delete
         iface_list = tm_settings.appliance__ip
@@ -497,7 +496,6 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
             except:
                 pass
             self.openstack_connector.clean_up(
-                lb.tenant_id,
                 instances=vms,
                 security_groups=security_groups,
                 ports=port_ids

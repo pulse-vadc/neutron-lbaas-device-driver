@@ -21,6 +21,7 @@ import base64
 from brocade_neutron_lbaas_tenant_customizations_db import helper \
      as customization_helper
 import json
+from keystoneclient.v3 import client as keystone_client
 from neutronclient.neutron import client as neutron_client
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -44,26 +45,25 @@ class ServerNotFoundError(BaseException):
 
 class OpenStackInterface(object):
     def __init__(self):
-        self.admin_username = cfg.CONF.lbaas_settings.openstack_username
-        self.admin_password = cfg.CONF.lbaas_settings.openstack_password
+        self.admin_password = cfg.CONF.lbaas_settings.os_admin_password
+        self.admin_project_id = cfg.CONF.lbaas_settings.os_admin_project_id
+        self.admin_username = cfg.CONF.lbaas_settings.os_admin_username
+        self.lbaas_password = cfg.CONF.lbaas_settings.lbaas_project_password
+        self.lbaas_project_id = cfg.CONF.lbaas_settings.lbaas_project_id
+        self.lbaas_username = cfg.CONF.lbaas_settings.lbaas_project_username
         # Get Neutron and Nova API endpoints...
-        keystone = self.get_keystone_client()
+        keystone = self.get_keystone_client(lbaas_project=True)
         neutron_service = keystone.services.find(name="neutron")
         nova_service = keystone.services.find(name="nova")
-        if cfg.CONF.lbaas_settings.keystone_version == "2":
-            self.neutron_endpoint = keystone.endpoints.find(
-                service_id=neutron_service.id
-            ).adminurl
-            self.nova_endpoint = keystone.endpoints.find(
-                service_id=nova_service.id
-            ).adminurl
-        else:
-            self.neutron_endpoint = keystone.endpoints.find(
-                interface="admin", service_id=neutron_service.id
-            ).url
-            self.nova_endpoint = keystone.endpoints.find(
-                interface="admin", service_id=nova_service.id
-            ).url
+        self.neutron_endpoint = keystone.endpoints.find(
+            interface="admin", service_id=neutron_service.id
+        ).url
+        nova_endpoint = keystone.endpoints.find(
+            interface="admin", service_id=nova_service.id
+        ).url
+        self.nova_endpoint = nova_endpoint.replace(
+            "%(tenant_id)s", self.lbaas_project_id
+        )
         # Get connector to tenant customizations database if enabled...
         if cfg.CONF.lbaas_settings.allow_tenant_customizations is True:
             self.customizations_db = customization_helper.\
@@ -73,7 +73,8 @@ class OpenStackInterface(object):
         else:
             self.customizations_db = None
 
-    def create_vtm(self, hostname, lb, password, ports, cluster=None, avoid=None):
+    def create_vtm(self, hostname, lb, password, ports, cluster=None,
+                   avoid=None):
         """
         Creates a vTM instance as a Nova VM.
         """
@@ -84,22 +85,21 @@ class OpenStackInterface(object):
         if ports['mgmt'] is not None:
             nics.insert(0, {"port": ports['mgmt']['id']})
         instance = self.create_server(
-            tenant_id=lb.tenant_id,
             hostname=hostname,
             user_data=self._generate_cloud_init_file(lb, user_data),
             nics=nics,
             password=password,
             avoid_host_of=avoid
         )
-        self.set_server_lock(lb.tenant_id, instance['id'], lock=True)
-        self._await_build_complete(lb.tenant_id, instance['id'])
+        self.set_server_lock(instance['id'], lock=True)
+        self._await_build_complete(instance['id'])
         return instance
 
     def destroy_vtm(self, hostname, lb):
         port_list = []
         sec_grp_list = []
         floatingip_list = []
-        server_id = self.get_server_id_from_hostname(lb.tenant_id, hostname)
+        server_id = self.get_server_id_from_hostname(hostname)
         neutron = self.get_neutron_client()
         # Build lists of ports, floating IPs and security groups to delete
         ports = neutron.list_ports(device_id=server_id)
@@ -113,7 +113,7 @@ class OpenStackInterface(object):
                 )['floatingips']
             ]
         # Delete the instance
-        self.delete_server(lb.tenant_id, server_id)
+        self.delete_server(server_id)
         # Wait for instance deletion to complete (else port deletion can fail)
         for _ in xrange(0, 60):
             try:
@@ -143,29 +143,29 @@ class OpenStackInterface(object):
                 # Might legitimately fail in HA deployments
                 pass
 
-    def clean_up(self, tenant_id, ports=None, security_groups=None,
-                 instances=None, floating_ips=None):
-        if instances:
+    def clean_up(self, ports=None, security_groups=None, instances=None,
+                 floating_ips=None):
+        if instances is not None:
             for instance in instances:
-                self.delete_server(tenant_id, instance)
+                self.delete_server(instance)
         neutron = self.get_neutron_client()
-        if floating_ips:
+        if floating_ips is not None:
             for flip in floating_ips:
                 neutron.delete_floatingip(flip)
-        if ports:
+        if ports is not None:
             for port in ports:
                 neutron.delete_port(port)
-        if security_groups:
+        if security_groups is not None:
             for sec_grp in security_groups:
                 neutron.delete_security_group(sec_grp)
 
-    def vtm_exists(self, tenant_id, hostname):
+    def vtm_exists(self, hostname):
         """
         Tests whether a vTM instance with the specified hosname exists.
         """
         hostname = hostname[0] if isinstance(hostname, tuple) else hostname
         try:
-            self.get_server_id_from_hostname(tenant_id, hostname)
+            self.get_server_id_from_hostname(hostname)
             return True
         except:
             return False
@@ -212,22 +212,25 @@ class OpenStackInterface(object):
                     port_id, {"port": {"allowed_address_pairs": new_pairs}}
                 )
 
-    def _await_build_complete(self, tenant_id, instance_id):
+    def _await_build_complete(self, instance_id):
         """
         Waits for a Nova instance to be built.
         """
-        instance = self.get_server(tenant_id, instance_id)
+        instance = self.get_server(instance_id)
         status = instance['status']
         while status == 'BUILD':
             sleep(10)
-            instance = self.get_server(tenant_id, instance_id)
+            instance = self.get_server(instance_id)
             status = instance['status']
             if status == 'ERROR':
-                self.delete_server(tenant_id, instance_id)
+                self.delete_server(instance_id)
                 raise Exception("VM build failed")
 
     def create_port(self, lb, hostname, mgmt_port=False, cluster=False,
-                    create_floating_ip=False, security_group=None):
+                    create_floating_ip=False, security_group=None,
+                    identifier=None):
+        if identifier is None and security_group is None:
+            raise Exception("Must specify either security_group or identifier")
         neutron = self.get_neutron_client()
         if mgmt_port is False:
             subnet = neutron.show_subnet(lb.vip_subnet_id)
@@ -237,7 +240,7 @@ class OpenStackInterface(object):
         port_config = {"port": {
             "admin_state_up": True,
             "network_id": network_id,
-            "tenant_id": lb.tenant_id,
+            "tenant_id": self.lbaas_project_id,
             "name": "{}-{}".format("mgmt" if mgmt_port else "data", hostname)
         }}
         if mgmt_port is False:
@@ -255,22 +258,22 @@ class OpenStackInterface(object):
             sec_grp_uuid = lb.tenant_id
 
         if create_floating_ip is True:
-            floatingip = self.create_floatingip(lb.tenant_id, port['id'])
+            floatingip = self.create_floatingip(port['id'])
             mgmt_ip = floatingip['floatingip']['floating_ip_address']
             if security_group is None:
                 sec_grp = self.create_lb_security_group(
-                    lb.tenant_id, sec_grp_uuid, mgmt_port=True, cluster=cluster
+                    lb.tenant_id, identifier, mgmt_port=True, cluster=cluster
                 )
                 security_group = sec_grp['security_group']['id']
         else:
             if security_group is None:
                 if mgmt_port is False:
                     sec_grp = self.create_lb_security_group(
-                        lb.tenant_id, sec_grp_uuid
+                        lb.tenant_id, identifier
                     )
                 else:
                     sec_grp = self.create_lb_security_group(
-                        lb.tenant_id, sec_grp_uuid, mgmt_port=True,
+                        lb.tenant_id, identifier, mgmt_port=True,
                         mgmt_label=True, cluster=cluster
                     )
                 security_group = sec_grp['security_group']['id']
@@ -285,7 +288,7 @@ class OpenStackInterface(object):
 
     def vtm_has_subnet_port(self, hostname, lb):
         hostname = hostname[0] if isinstance(hostname, tuple) else hostname
-        ports = self.get_server_ports(lb.tenant_id, hostname)
+        ports = self.get_server_ports(hostname)
         for port in ports:
             for fixed_ip in port['fixed_ips']:
                 if fixed_ip['subnet_id'] == lb.vip_subnet_id:
@@ -302,26 +305,24 @@ class OpenStackInterface(object):
             return True
         return False
 
-    def attach_port(self, hostname, lb):
-        server_id = self.get_server_id_from_hostname(lb.tenant_id, hostname)
+    def attach_port(self, hostname, lb, identifier):
+        server_id = self.get_server_id_from_hostname(hostname)
         sec_grp_id = self.get_security_group_id(
-            "lbaas-{}".format(lb.tenant_id)
+            "lbaas-{}".format(identifier)
         )
         port, junk, junk = self.create_port(
             lb, hostname, security_group=sec_grp_id
         )
-        self.attach_port_to_instance(lb.tenant_id, server_id, port['id'])
+        self.attach_port_to_instance(server_id, port['id'])
         return port
 
     def detach_port(self, hostname, lb):
         neutron = self.get_neutron_client()
-        server_id = self.get_server_id_from_hostname(lb.tenant_id, hostname)
+        server_id = self.get_server_id_from_hostname(hostname)
         ports = neutron.list_ports(device_id=server_id,)['ports']
         for port in ports:
             if port['fixed_ips'][0]['subnet_id'] == lb.vip_subnet_id:
-                self.detach_port_from_instance(
-                    lb.tenant_id, server_id, port['id']
-                )
+                self.detach_port_from_instance(server_id, port['id'])
                 neutron.delete_port(port['id'])
                 return port['fixed_ips'][0]['ip_address']
         raise Exception(_(
@@ -356,7 +357,6 @@ class OpenStackInterface(object):
         )
         if gui_access is True and not mgmt_label:
             self.create_security_group_rule(
-                tenant_id,
                 sec_grp['security_group']['id'],
                 port=cfg.CONF.vtm_settings.admin_port
             )
@@ -371,7 +371,6 @@ class OpenStackInterface(object):
             )
             for server in source_list:
                 self.create_security_group_rule(
-                    tenant_id,
                     sec_grp['security_group']['id'],
                     port=cfg.CONF.vtm_settings.rest_port,
                     src_addr=socket.gethostbyname(server)
@@ -379,7 +378,6 @@ class OpenStackInterface(object):
             # SNMP access
             for cidr in cfg.CONF.vtm_settings.snmp_allow_from:
                 self.create_security_group_rule(
-                    tenant_id,
                     sec_grp['security_group']['id'],
                     port=cfg.CONF.vtm_settings.snmp_port,
                     protocol='udp',
@@ -388,40 +386,35 @@ class OpenStackInterface(object):
         # If cluster, add necessary ports for intra-cluster comms
         if cluster is True:
             self.create_security_group_rule(
-                tenant_id,
                 sec_grp['security_group']['id'],
                 port=cfg.CONF.vtm_settings.admin_port,
                 remote_group=sec_grp['security_group']['id']
             )
             self.create_security_group_rule(
-                tenant_id,
                 sec_grp['security_group']['id'],
                 port=cfg.CONF.vtm_settings.admin_port,
                 remote_group=sec_grp['security_group']['id'],
                 protocol='udp'
             )
             self.create_security_group_rule(
-                tenant_id,
                 sec_grp['security_group']['id'],
                 port=cfg.CONF.vtm_settings.cluster_port,
                 remote_group=sec_grp['security_group']['id']
             )
             self.create_security_group_rule(
-                tenant_id,
                 sec_grp['security_group']['id'],
                 port=cfg.CONF.vtm_settings.cluster_port,
                 remote_group=sec_grp['security_group']['id'],
                 protocol='udp'
             )
             self.create_security_group_rule(
-                tenant_id,
                 sec_grp['security_group']['id'],
                 port=cfg.CONF.vtm_settings.rest_port,
                 remote_group=sec_grp['security_group']['id']
             )
         return sec_grp
 
-    def create_security_group_rule(self, tenant_id, sec_grp_id, port,
+    def create_security_group_rule(self, sec_grp_id, port,
                                    src_addr=None, remote_group=None,
                                    direction="ingress", protocol='tcp'):
         """
@@ -441,7 +434,7 @@ class OpenStackInterface(object):
             "port_range_max": port_max,
             "protocol": protocol,
             "security_group_id": sec_grp_id,
-            "tenant_id": tenant_id
+            "tenant_id": self.lbaas_project_id
         }}
         if src_addr:
             new_rule['security_group_rule']['remote_ip_prefix'] = src_addr
@@ -471,9 +464,7 @@ class OpenStackInterface(object):
             name=sec_grp_name
         )['security_groups'][0]
         # Create the required rule
-        self.create_security_group_rule(
-            lb.tenant_id, sec_grp['id'], port, protocol=protocol
-        )
+        self.create_security_group_rule(sec_grp['id'], port, protocol=protocol)
 
     def block_port(self, lb, port, identifier, protocol='tcp', force=False):
         """
@@ -546,15 +537,19 @@ class OpenStackInterface(object):
         elif deployment_model == "PER_LOADBALANCER":
             return loadbalancer_id
         elif deployment_model == "PER_SUBNET":
+            if subnet_id in cfg.CONF.lbaas_settings.shared_subnets:
+                return hashlib.sha1(
+                    "{}-{}".format(subnet_id, tenant_id)
+                ).hexdigest()
             return subnet_id
 
-    def create_floatingip(self, tenant_id, port_id):
+    def create_floatingip(self, port_id):
         neutron = self.get_neutron_client()
         network = cfg.CONF.lbaas_settings.management_network
         floatingip_data = {"floatingip": {
             "floating_network_id": network,
             "port_id": port_id,
-            "tenant_id": tenant_id
+            "tenant_id": self.lbaas_project_id
         }}
         return neutron.create_floatingip(floatingip_data)
 
@@ -562,14 +557,14 @@ class OpenStackInterface(object):
         neutron = self.get_neutron_client()
         return neutron.show_subnet(subnet_id)['subnet']['network_id']
 
-    def create_server(self, tenant_id, hostname, user_data, nics, password,
+    def create_server(self, hostname, user_data, nics, password,
                       avoid_host_of=None):
         """
         Creates a Nova instance of the vTM image.
         """
         image_id = self._get_setting(tenant_id, "lbaas_settings", "image_id")
         flavor_id = self._get_setting(tenant_id, "lbaas_settings", "flavor_id")
-        token, endpoint = self.get_nova_connection_data(tenant_id)
+        token = self.get_auth_token()
         headers = {
             "Content-Type": "application/json",
             "X-Auth-Token": token
@@ -597,7 +592,7 @@ class OpenStackInterface(object):
             }
         try:
             response = requests.post(
-                "{}/servers".format(endpoint),
+                "{}/servers".format(self.nova_endpoint),
                 data=json.dumps(body),
                 headers=headers
             )
@@ -609,21 +604,21 @@ class OpenStackInterface(object):
             LOG.error(_("\nError creating vTM instance: {}".format(e)))
         return response.json()['server']
 
-    def get_server(self, tenant_id, server_id):
-        token, endpoint = self.get_nova_connection_data(tenant_id)
+    def get_server(self, server_id):
+        token = self.get_auth_token()
         response = requests.get(
-            "{}/servers/{}".format(endpoint, server_id),
+            "{}/servers/{}".format(self.nova_endpoint, server_id),
             headers={"X-Auth-Token": token}
         )
         if response.status_code != 200:
             raise ServerNotFoundError(server_id=server_id)
         return response.json()['server']
 
-    def attach_port_to_instance(self, tenant_id, server_id, port_id):
-        self.set_server_lock(tenant_id, server_id, lock=False)
-        token, endpoint = self.get_nova_connection_data(tenant_id)
+    def attach_port_to_instance(self, server_id, port_id):
+        self.set_server_lock(server_id, lock=False)
+        token = self.get_auth_token()
         response = requests.post(
-            "{}/servers/{}/os-interface".format(endpoint, server_id),
+            "{}/servers/{}/os-interface".format(self.nova_endpoint, server_id),
             data=json.dumps({"interfaceAttachment": { "port_id": port_id}}),
             headers={"X-Auth-Token": token, "Content-Type": "application/json"}
         )
@@ -634,12 +629,12 @@ class OpenStackInterface(object):
                     port_id, server_id, response.text
             ))
 
-    def detach_port_from_instance(self, tenant_id, server_id, port_id):
-        self.set_server_lock(tenant_id, server_id, lock=False)
-        token, endpoint = self.get_nova_connection_data(tenant_id)
+    def detach_port_from_instance(self, server_id, port_id):
+        self.set_server_lock(server_id, lock=False)
+        token = self.get_auth_token()
         response = requests.delete(
             "{}/servers/{}/os-interface/{}".format(
-                endpoint, server_id, port_id
+                self.nova_endpoint, server_id, port_id
             ),
             headers={"X-Auth-Token": token}
         )
@@ -650,19 +645,19 @@ class OpenStackInterface(object):
                     port_id, server_id, response.text
             ))
 
-    def get_mgmt_ip(self, tenant_id, hostname):
+    def get_mgmt_ip(self, hostname):
         neutron = self.get_neutron_client()
         mgmt_net = neutron.show_network(
             cfg.CONF.lbaas_settings.management_network
         )['network']['name']
-        server_id = self.get_server_id_from_hostname(tenant_id, hostname)
-        server = self.get_server(tenant_id, server_id)
+        server_id = self.get_server_id_from_hostname(hostname)
+        server = self.get_server(server_id)
         return server['addresses'][mgmt_net][0]['addr']
 
-    def set_server_lock(self, tenant_id, server_id, lock=True):
-        token, endpoint = self.get_nova_connection_data(tenant_id)
+    def set_server_lock(self, server_id, lock=True):
+        token = self.get_auth_token()
         response = requests.post(
-            "{}/servers/{}/action".format(endpoint, server_id),
+            "{}/servers/{}/action".format(self.nova_endpoint, server_id),
             headers={
                 "X-Auth-Token": token,
                 "Content-Type": "application/json"
@@ -672,12 +667,12 @@ class OpenStackInterface(object):
         if response.status_code != 202:
             raise Exception("Failed to lock server {}".format(server_id))
 
-    def get_server_ports(self, tenant_id, hostname):
+    def get_server_ports(self, hostname):
         """
         Gets the Neutron ID of a vTM's data port.
         """
         neutron = self.get_neutron_client()
-        server_id = self.get_server_id_from_hostname(tenant_id, hostname)
+        server_id = self.get_server_id_from_hostname(hostname)
         all_ports = neutron.list_ports(device_id=server_id)['ports']
         data_ports = [
             port for port in all_ports
@@ -687,17 +682,17 @@ class OpenStackInterface(object):
             return data_ports
         raise Exception("No data ports found for {}".format(hostname))
 
-    def get_server_port_ids(self, tenant_id, hostname):
-        ports = self.get_server_ports(tenant_id, hostname)
+    def get_server_port_ids(self, hostname):
+        ports = self.get_server_ports(hostname)
         return [port['id'] for port in ports]
 
-    def get_server_id_from_hostname(self, tenant_id, hostname):
+    def get_server_id_from_hostname(self, hostname):
         """
         Gets the Nova ID of a server from its hostname.
         """
-        token, endpoint = self.get_nova_connection_data(tenant_id)
+        token = self.get_auth_token()
         response = requests.get(
-            "{}/servers?name={}".format(endpoint, hostname),
+            "{}/servers?name={}".format(self.nova_endpoint, hostname),
             headers={"X-Auth-Token": token}
         )
         try:
@@ -705,14 +700,14 @@ class OpenStackInterface(object):
         except Exception:
             raise ServerNotFoundError(hostname=hostname)
 
-    def delete_server(self, tenant_id, server_id):
+    def delete_server(self, server_id):
         """
         Deletes a Nova instance.
         """
-        self.set_server_lock(tenant_id, server_id, lock=False)
-        token, endpoint = self.get_nova_connection_data(tenant_id)
+        self.set_server_lock(server_id, lock=False)
+        token = self.get_auth_token()
         requests.delete(
-            "{}/servers/{}".format(endpoint, server_id),
+            "{}/servers/{}".format(self.nova_endpoint, server_id),
             headers={"X-Auth-Token": token}
         )
 
@@ -726,38 +721,28 @@ class OpenStackInterface(object):
                     return (subnet['gateway_ip'], port['mac_address'])
         return (None, None)
 
-    def get_nova_connection_data(self, tenant_id):
-        token = self.get_auth_token(tenant_id=tenant_id)
-        endpoint = self.nova_endpoint.replace("$(tenant_id)s", tenant_id)
-        endpoint = endpoint.replace("%(tenant_id)s", tenant_id)
-        return (token, endpoint)
-
     def get_neutron_client(self):
-        auth_token = self.get_auth_token()
+        auth_token = self.get_auth_token(lbaas_project=False)
         neutron = neutron_client.Client(
             '2.0', endpoint_url=self.neutron_endpoint, token=auth_token
         )
         neutron.format = 'json'
         return neutron
 
-    def get_keystone_client(self, tenant_id=None, tenant_name=None):
+    def get_keystone_client(self, lbaas_project=False):
         auth_url = re.match(
             "^(https?://[^/]+)",
             cfg.CONF.keystone_authtoken.auth_uri
         ).group(1)
-        if cfg.CONF.lbaas_settings.keystone_version == "2":
-            from keystoneclient.v2_0 import client as keystone_client
-            auth_url = "{}/v2.0".format(auth_url)
+        auth_url = "{}/v3".format(auth_url)
+        if lbaas_project is True:
+            password = self.lbaas_password
+            project_id = self.lbaas_project_id
+            username = self.lbaas_username
         else:
-            from keystoneclient.v3 import client as keystone_client
-            auth_url = "{}/v3".format(auth_url)
-        param = {}
-        if tenant_id:
-            param['tenant_id'] = tenant_id
-        elif tenant_name:
-            param['tenant_name'] = tenant_name
-        else:
-            param['tenant_name'] = "admin"
+            password = self.admin_password
+            project_id = self.admin_project_id
+            username = self.admin_username
         return keystone_client.Client(
             username=self.admin_username,
             password=self.admin_password,
@@ -765,8 +750,8 @@ class OpenStackInterface(object):
             **param
         )
 
-    def get_auth_token(self, tenant_id=None, tenant_name=None):
-        keystone_client = self.get_keystone_client(tenant_id, tenant_name)
+    def get_auth_token(self, lbaas_project=True):
+        keystone_client = self.get_keystone_client(lbaas_project)
         return keystone_client.auth_token
 
     def get_subnet_netmask(self, subnet_id):
