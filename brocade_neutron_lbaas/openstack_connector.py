@@ -35,6 +35,13 @@ import yaml
 LOG = logging.getLogger(__name__)
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+
+class ServerNotFoundError(BaseException):
+    def __init__(self, hostname=None, server_id=None):
+        self.hostname = hostname
+        self.server_id = server_id
+
+
 class OpenStackInterface(object):
     def __init__(self):
         self.admin_username = cfg.CONF.lbaas_settings.openstack_username
@@ -107,6 +114,13 @@ class OpenStackInterface(object):
             ]
         # Delete the instance
         self.delete_server(lb.tenant_id, server_id)
+        # Wait for instance deletion to complete (else port deletion can fail)
+        for _ in xrange(0, 60):
+            try:
+                self.get_server(server_id)
+            except ServerNotFoundError:
+                break
+            sleep(1)
         # Delete floating IPs
         for flip in floatingip_list:
             try:
@@ -593,7 +607,7 @@ class OpenStackInterface(object):
             headers={"X-Auth-Token": token}
         )
         if response.status_code != 200:
-            raise Exception("Server Not found")
+            raise ServerNotFoundError(server_id=server_id)
         return response.json()['server']
 
     def attach_port_to_instance(self, tenant_id, server_id, port_id):
@@ -680,7 +694,7 @@ class OpenStackInterface(object):
         try:
             return response.json()['servers'][0]['id']
         except Exception:
-            raise Exception("Server not found")
+            raise ServerNotFoundError(hostname=hostname)
 
     def delete_server(self, tenant_id, server_id):
         """
