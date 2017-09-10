@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
+# Matthew Geldert (mgeldert@pulsesecure.net), Pulse Secure, LLC
 #
 
 import models
@@ -22,7 +22,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.exc import NoResultFound
 
-class BrocadeLbaasTenantCustomizationsDatabaseHelper(object):
+class PulseLbaasTenantCustomizationsDatabaseHelper(object):
     """
     PLEASE DO NOT EDIT THE BELOW VARIABLE IN AN ATTEMPT TO CUSTOMIZE OTHER
     PARAMETERS ON A PER TENANT BASIS - YOU WILL BREAK THE DRIVER
@@ -57,7 +57,7 @@ class BrocadeLbaasTenantCustomizationsDatabaseHelper(object):
 
     def get_all_tenant_customizations(self, tenant_id):
         customizations = self.db.query(
-            models.BrocadeLbaasTenantCustomizations
+            models.PulseLbaasTenantCustomizations
         ).\
             filter_by(tenant_id=tenant_id).\
             all()
@@ -75,7 +75,7 @@ class BrocadeLbaasTenantCustomizationsDatabaseHelper(object):
         self._validate_setting(section, parameter)
         try:
             customization = self.db.query(
-                models.BrocadeLbaasTenantCustomizations
+                models.PulseLbaasTenantCustomizations
             ).\
                 filter_by(tenant_id=tenant_id).\
                 filter_by(config_section=section).\
@@ -89,7 +89,7 @@ class BrocadeLbaasTenantCustomizationsDatabaseHelper(object):
         self._validate_setting(section, parameter)
         try:
             customization = self.db.query(
-                models.BrocadeLbaasTenantCustomizations
+                models.PulseLbaasTenantCustomizations
             ).\
                 filter_by(tenant_id=tenant_id).\
                 filter_by(config_section=section).\
@@ -97,7 +97,7 @@ class BrocadeLbaasTenantCustomizationsDatabaseHelper(object):
                 one()
             customization.value = value
         except NoResultFound:
-            self.db.add(models.BrocadeLbaasTenantCustomizations(
+            self.db.add(models.PulseLbaasTenantCustomizations(
                 tenant_id=tenant_id,
                 config_section=section,
                 parameter=parameter,
@@ -108,7 +108,7 @@ class BrocadeLbaasTenantCustomizationsDatabaseHelper(object):
     def delete_customization(self, tenant_id, section, parameter):
         try:
             customization = self.db.query(
-                models.BrocadeLbaasTenantCustomizations
+                models.PulseLbaasTenantCustomizations
             ).\
                 filter_by(tenant_id=tenant_id).\
                 filter_by(config_section=section).\

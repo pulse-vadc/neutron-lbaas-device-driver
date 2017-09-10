@@ -17,7 +17,7 @@
 # Matthew Geldert (mgeldert@pulsesecure.net), Pulse Secure, LLC
 #
 
-from brocade_neutron_lbaas_tenant_customizations_db import helper \
+from pulse_neutron_lbaas_tenant_customizations_db import helper \
     as customization_helper
 import neutron_lbaas.common.cert_manager
 from neutron_lbaas.common.exceptions import LbaasException
@@ -96,7 +96,7 @@ class vTMDeviceDriverCommon(object):
         # Get connector to tenant customizations database if enabled...
         if cfg.CONF.lbaas_settings.allow_tenant_customizations is True:
             self.customizations_db = customization_helper.\
-                BrocadeLbaasTenantCustomizationsDatabaseHelper(
+                PulseLbaasTenantCustomizationsDatabaseHelper(
                     cfg.CONF.lbaas_settings.tenant_customizations_db
                 )
         else:
@@ -604,7 +604,7 @@ class vTMDeviceDriverCommon(object):
             project_id=tenant_id,
             cert_ref=container_ref,
             resource_ref=self.certificate_manager.get_service_url(lb_id),
-            service_name='Neutron LBaaS v2 Brocade provider'
+            service_name='Neutron LBaaS v2 Pulse provider'
         )
         if cert.get_private_key_passphrase():
             raise Exception(_(

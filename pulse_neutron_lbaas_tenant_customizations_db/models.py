@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
+# Matthew Geldert (mgeldert@pulsesecure.net), Pulse Secure, LLC
 #
 
 import re
@@ -24,10 +24,10 @@ from sqlalchemy.orm import validates
 
 BaseTable = declarative_base()
 
-class BrocadeLbaasTenantCustomizations(BaseTable):
+class PulseLbaasTenantCustomizations(BaseTable):
 
-    __bind_key__ = "brcdlbaastenantcust"
-    __tablename__ = "brocade_lbaas_tenant_customizations"
+    __bind_key__ = "pulselbaastenantcust"
+    __tablename__ = "pulse_lbaas_tenant_customizations"
 
     """ Unique ID for each record. """
     uid = Column(Integer, primary_key=True)
@@ -55,7 +55,7 @@ class BrocadeLbaasTenantCustomizations(BaseTable):
         raise Exception("Invalid tenant_id")
 
     def __repr__(self):
-        return "<BrocadeLbassTenantCustomizations %s: %s %s:%s=%s>" % (
+        return "<PulseLbassTenantCustomizations %s: %s %s:%s=%s>" % (
             self.uid, self.tenant_id, self.config_section, 
             self.parameter, self.value
         )

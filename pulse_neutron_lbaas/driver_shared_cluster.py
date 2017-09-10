@@ -29,7 +29,7 @@ from traceback import format_exc
 LOG = logging.getLogger(__name__)
 
 
-class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
+class PulseDeviceDriverV2(vTMDeviceDriverCommon):
     """
     Shared vTM Cluster Version
     """
@@ -48,9 +48,9 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
             )
             for server in cfg.CONF.lbaas_settings.admin_servers
         ]
-        super(BrocadeDeviceDriverV2, self).__init__()
+        super(PulseDeviceDriverV2, self).__init__()
         LOG.info(_(
-            "\nShared Brocade vTM LBaaS module initialized with {} cluster "
+            "\nShared Pulse vTM LBaaS module initialized with {} cluster "
             "members.\nPlease restart the Neutron server if you manually "
             "add/remove any vTMs from the cluster.".format(len(self.vtms))
         ))
@@ -114,7 +114,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
             listener.loadbalancer.id
         ]
         listen_on_settings['listen_on_any'] = False
-        super(BrocadeDeviceDriverV2, self).update_listener(
+        super(PulseDeviceDriverV2, self).update_listener(
             listener, old, vtm, listen_on_settings, False,
             "{} ({})".format(listener.name, listener.tenant_id)
         )
@@ -122,7 +122,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
     @logging_wrapper
     def delete_listener(self, listener):
         vtm = self._get_vtm()
-        super(BrocadeDeviceDriverV2, self).delete_listener(listener,vtm,False)
+        super(PulseDeviceDriverV2, self).delete_listener(listener,vtm,False)
 
 #########
 # POOLS #
@@ -131,14 +131,14 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
     @logging_wrapper
     def update_pool(self, pool, old):
         vtm = self._get_vtm()
-        super(BrocadeDeviceDriverV2, self).update_pool(
+        super(PulseDeviceDriverV2, self).update_pool(
             pool, old, vtm, "{} ({})".format(pool.name, pool.tenant_id)
         )
 
     @logging_wrapper
     def delete_pool(self, pool):
         vtm = self._get_vtm()
-        super(BrocadeDeviceDriverV2, self).delete_pool(pool, vtm)
+        super(PulseDeviceDriverV2, self).delete_pool(pool, vtm)
 
 ############
 # MONITORS #
@@ -147,7 +147,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
     @logging_wrapper
     def update_healthmonitor(self, monitor, old):
         vtm = self._get_vtm()
-        super(BrocadeDeviceDriverV2, self).update_healthmonitor(
+        super(PulseDeviceDriverV2, self).update_healthmonitor(
             monitor, old, vtm,
             "{} ({})".format(monitor.pool.name, monitor.tenant_id)
         )
@@ -155,7 +155,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
     @logging_wrapper
     def delete_healthmonitor(self, monitor):
         vtm = self._get_vtm()
-        super(BrocadeDeviceDriverV2, self).delete_healthmonitor(monitor, vtm)
+        super(PulseDeviceDriverV2, self).delete_healthmonitor(monitor, vtm)
 
 ###############
 # L7 POLICIES #
@@ -164,12 +164,12 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
     @logging_wrapper
     def update_l7_policy(self, policy, old):
         vtm = self._get_vtm()
-        super(BrocadeDeviceDriverV2, self).update_l7_policy(policy, old, vtm)
+        super(PulseDeviceDriverV2, self).update_l7_policy(policy, old, vtm)
 
     @logging_wrapper
     def delete_l7_policy(self, policy):
         vtm = self._get_vtm()
-        super(BrocadeDeviceDriverV2, self).delete_l7_policy(policy, vtm)
+        super(PulseDeviceDriverV2, self).delete_l7_policy(policy, vtm)
 
 #########
 # STATS #
@@ -178,7 +178,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
     @logging_wrapper
     def stats(self, loadbalancer):
         vtm = self._get_vtm()
-        return super(BrocadeDeviceDriverV2, self).stats(
+        return super(PulseDeviceDriverV2, self).stats(
             vtm, loadbalancer.vip_address
         )
 

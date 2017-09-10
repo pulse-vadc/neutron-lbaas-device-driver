@@ -146,7 +146,7 @@ cfg.CONF.register_opts(vtm_setting_opts, "vtm_settings")
 
 def check_required_settings(required):
     error_msg = "\n\nThe following settings were not found in the " + \
-                "Brocade configuration file:\n\n"
+                "Pulse vTM LBaaS configuration file:\n\n"
     key_missing = False
     for section, required_settings in required.iteritems():
         section_key_missing = False
@@ -166,17 +166,17 @@ def check_required_settings(required):
             error_msg += "Nothing\n"
         error_msg += "\n"
     if key_missing:
-        error_msg += "Please ensure that the Brocade configuration file " + \
-            "is being passed to the Neutron server with the --config-file " + \
-            "parameter, and that the file contains values for the above " + \
-            "settings.\n"
+        error_msg += "Please ensure that the Pulse LBaaS configuration " + \
+            "file is being passed to the Neutron server with the " + \
+            "--config-file parameter, and that the file contains values " + \
+            "for the above settings.\n"
         raise Exception(_(error_msg))
 
 
 if cfg.CONF.lbaas_settings.deployment_model is None:
     raise Exception(_(
         "LBaaS: No value for deployment_model in lbaas_settings. "
-        "Either the value is not in the Brocade LBaaS configuration file "
+        "Either the value is not in the Pulse LBaaS configuration file "
         "or the configuration file was not passed to the neutron server."
     ))
 

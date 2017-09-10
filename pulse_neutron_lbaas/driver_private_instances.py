@@ -30,7 +30,7 @@ from traceback import format_exc
 LOG = logging.getLogger(__name__)
 
 
-class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
+class PulseDeviceDriverV2(vTMDeviceDriverCommon):
     """
     Services Director Unmanaged Version
     """
@@ -49,8 +49,8 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
                 cfg.CONF.services_director_settings.rest_port
             )
         )
-        super(BrocadeDeviceDriverV2, self).__init__()
-        LOG.info(_("\nBrocade vTM LBaaS module initialized."))
+        super(PulseDeviceDriverV2, self).__init__()
+        LOG.info(_("\nPulse vTM LBaaS module initialized."))
 
     @logging_wrapper
     def create_loadbalancer(self, lb):
@@ -171,7 +171,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
             listen_on_settings['listen_on_traffic_ips'] = []
             listen_on_settings['listen_on_any'] = True
         vtm = self._get_vtm(hostname)
-        super(BrocadeDeviceDriverV2, self).update_listener(
+        super(PulseDeviceDriverV2, self).update_listener(
             listener, old, vtm, listen_on_settings
         )
         self._touch_last_modified_timestamp(vtm)
@@ -183,7 +183,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
         )
         hostname = self._get_hostname(listener.loadbalancer)
         vtm = self._get_vtm(hostname)
-        super(BrocadeDeviceDriverV2, self).delete_listener(listener, vtm)
+        super(PulseDeviceDriverV2, self).delete_listener(listener, vtm)
         self._touch_last_modified_timestamp(vtm)
 
 #########
@@ -205,14 +205,14 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
                     pool.listener.loadbalancer
                 )
         vtm = self._get_vtm(hostname)
-        super(BrocadeDeviceDriverV2, self).update_pool(pool, old, vtm)
+        super(PulseDeviceDriverV2, self).update_pool(pool, old, vtm)
         self._touch_last_modified_timestamp(vtm)
 
     @logging_wrapper
     def delete_pool(self, pool):
         hostname = self._get_hostname(pool.loadbalancer)
         vtm = self._get_vtm(hostname)
-        super(BrocadeDeviceDriverV2, self).delete_pool(
+        super(PulseDeviceDriverV2, self).delete_pool(
             pool, vtm
         )
         self._touch_last_modified_timestamp(vtm)
@@ -227,7 +227,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
             monitor.root_loadbalancer
         )
         vtm = self._get_vtm(hostname)
-        super(BrocadeDeviceDriverV2, self).update_healthmonitor(
+        super(PulseDeviceDriverV2, self).update_healthmonitor(
             monitor, old, vtm
         )
         self._touch_last_modified_timestamp(vtm)
@@ -236,7 +236,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
     def delete_healthmonitor(self, monitor):
         hostname = self._get_hostname(monitor.root_loadbalancer)
         vtm = self._get_vtm(hostname)
-        super(BrocadeDeviceDriverV2, self).delete_healthmonitor(
+        super(PulseDeviceDriverV2, self).delete_healthmonitor(
             monitor, vtm
         )
         self._touch_last_modified_timestamp(vtm)
@@ -249,14 +249,14 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
     def update_l7_policy(self, policy, old):
         hostname = self._get_hostname(policy.root_loadbalancer)
         vtm = self._get_vtm(hostname)
-        super(BrocadeDeviceDriverV2, self).update_l7_policy(policy, old, vtm)
+        super(PulseDeviceDriverV2, self).update_l7_policy(policy, old, vtm)
         self._touch_last_modified_timestamp(vtm)
 
     @logging_wrapper
     def delete_l7_policy(self, policy):
         hostname = self._get_hostname(policy.root_loadbalancer)
         vtm = self._get_vtm(hostname)
-        super(BrocadeDeviceDriverV2, self).delete_l7_policy(policy, vtm)
+        super(PulseDeviceDriverV2, self).delete_l7_policy(policy, vtm)
         self._touch_last_modified_timestamp(vtm)
 
 #########
@@ -271,11 +271,11 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
         hostname = self._get_hostname(loadbalancer)
         vtm = self._get_vtm(hostname)
         if deployment_model == "PER_TENANT":
-            return super(BrocadeDeviceDriverV2, self).stats(
+            return super(PulseDeviceDriverV2, self).stats(
                 vtm, loadbalancer.vip_address
             )
         elif self.lb_deployment_model == "PER_LOADBALANCER":
-            return super(BrocadeDeviceDriverV2, self).stats(vtm)
+            return super(PulseDeviceDriverV2, self).stats(vtm)
 
 ########
 # MISC #
@@ -291,7 +291,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
 
     def _get_services_director(self):
         """
-        Gets available instance of Brocade Services Director from the cluster.
+        Gets available instance of Pulse Services Director from the cluster.
         """
         for _ in range(3):
             if self.services_director.test_connectivity():
@@ -300,7 +300,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverCommon):
 
     def _get_vtm(self, hostname):
         """
-        Gets available instance of Brocade vTM from a Services Director.
+        Gets available instance of Pulse vTM from a Services Director.
         """
         if isinstance(hostname, list) or isinstance(hostname, tuple):
             for host in hostname:

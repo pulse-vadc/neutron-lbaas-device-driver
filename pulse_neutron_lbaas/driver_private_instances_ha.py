@@ -18,7 +18,7 @@
 #
 
 from driver_common import logging_wrapper
-from driver_private_instances import BrocadeDeviceDriverV2 \
+from driver_private_instances import PulseDeviceDriverV2 \
     as vTMDeviceDriverPrivateInstances, PollInstance
 from neutron_lbaas.common.exceptions import LbaasException
 from oslo_config import cfg
@@ -30,7 +30,7 @@ from traceback import format_exc
 LOG = logging.getLogger(__name__)
 
 
-class BrocadeDeviceDriverV2(vTMDeviceDriverPrivateInstances):
+class PulseDeviceDriverV2(vTMDeviceDriverPrivateInstances):
     """
     Services Director Unmanaged Version with provisioning of HA pairs.
     """
@@ -44,7 +44,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverPrivateInstances):
         PER_TENANT, a new cluster will only be spawned if one does not
         already exist for the tenant.
         """
-        super(BrocadeDeviceDriverV2, self).create_loadbalancer(lb)
+        super(PulseDeviceDriverV2, self).create_loadbalancer(lb)
         deployment_model = self._get_setting(
             lb.tenant_id, "lbaas_settings", "deployment_model"
         )
@@ -137,13 +137,13 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverPrivateInstances):
     def _attach_subnet_port(self, vtm, hostnames, lb):
         try:
             for hostname in hostnames:
-                super(BrocadeAdxDeviceDriverV2, self)._attach_subnet_port(
+                super(PulseDeviceDriverV2, self)._attach_subnet_port(
                     vtm, hostname, lb
                 )
         except AttributeError:
             for hostname in hostnames:
                 try:
-                    super(BrocadeAdxDeviceDriverV2, self)._detach_subnet_port(
+                    super(PulseDeviceDriverV2, self)._detach_subnet_port(
                         vtm, hostname, lb
                     )
                 except:
@@ -155,7 +155,7 @@ class BrocadeDeviceDriverV2(vTMDeviceDriverPrivateInstances):
 
     def _detach_subnet_port(self, vtm, hostnames, lb):
         for hostname in hostnames:
-            super(BrocadeAdxDeviceDriverV2, self)._detach_subnet_port(
+            super(PulseDeviceDriverV2, self)._detach_subnet_port(
                 vtm, hostname, lb
             )
 

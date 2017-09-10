@@ -293,7 +293,7 @@ class SubList(ConfigObjectList):
 
 class ProductInstance(ConfigObject):
     """
-    Represents a Brocade product instance.
+    Represents a Pulse product instance.
     """
     __metadata__ = ABCMeta
 

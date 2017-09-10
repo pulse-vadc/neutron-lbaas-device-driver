@@ -17,8 +17,8 @@
 # Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
 #
 
-from brocade_neutron_lbaas_tenant_customizations_db.helper import \
-     BrocadeLbaasTenantCustomizationsDatabaseHelper as db_helper
+from pulse_neutron_lbaas_tenant_customizations_db.helper import \
+     PulseLbaasTenantCustomizationsDatabaseHelper as db_helper
 import os
 import sys
 
@@ -29,7 +29,7 @@ def help(msg=None):
     print """
 Usage:
 
-# brocade_lbaas_tenant_customization <ACTION> [--db=<DB_PATH>] [OTHER_PARAMETERS]
+# pulse_lbaas_tenant_customization <ACTION> [--db=<DB_PATH>] [OTHER_PARAMETERS]
 
 ACTIONS:
     list        - lists all customizations for the specified tenant
@@ -46,8 +46,8 @@ This can be a table in the Neutron database, or a separate one. The path to
 the database can be supplied in one of three ways:
 
 1) With the --db=<DB_PATH> parameter
-2) In the BROCADE_LBAAS_DB_PATH environment variable
-3) In the /etc/brocade_lbaas_tenant_customizations file
+2) In the PULSE_LBAAS_DB_PATH environment variable
+3) In the /etc/pulse_lbaas_tenant_customizations file
 
 The path must be in the following format:
 
@@ -122,10 +122,10 @@ def main(argv):
         db = None
         if args.get("db") is not None:
             db = db_helper(args['db'])
-        elif os.environ.get("BROCADE_LBAAS_DB_PATH") is not None:
-            db = db_helper(os.environ["BROCADE_LBAAS_DB_PATH"])
-        elif os.path.isfile("/etc/brocade_lbaas_tenant_customizations"):
-            with open("/etc/brocade_lbaas_tenant_customizations") as f:
+        elif os.environ.get("PULSE_LBAAS_DB_PATH") is not None:
+            db = db_helper(os.environ["PULSE_LBAAS_DB_PATH"])
+        elif os.path.isfile("/etc/pulse_lbaas_tenant_customizations"):
+            with open("/etc/pulse_lbaas_tenant_customizations") as f:
                 db_path = f.read()
             db = db_helper(db_path.strip())
 
@@ -179,11 +179,11 @@ def main(argv):
             # Create the database table to hold tenant customizations
             db_path = args['db']
             try:
-                with open("/etc/brocade_lbaas_tenant_customizations", "w") as f:
+                with open("/etc/pulse_lbaas_tenant_customizations", "w") as f:
                     f.write(db_path)
             except IOError:
                 print ("\nThere was an error writing to "
-                       "/etc/brocade_lbaas_tenant_customizations. Please "
+                       "/etc/pulse_lbaas_tenant_customizations. Please "
                        "ensure you have the necessary permissions.\n")
                 sys.exit(1)
             db = db_helper(db_path)

@@ -28,24 +28,23 @@ if driver_path is None:
     )
 
 setup(
-    name="brocade_neutron_lbaas",
+    name="pulse_neutron_lbaas",
     author="Matthew Geldert",
-    author_email="mgeldert@brocade.com",
-    description="Brocade vADC OpenStack Neutron LBaaS Device Driver",
+    author_email="mgeldert@pulsesecure.net",
+    description="Pulse vADC OpenStack Neutron LBaaS Device Driver",
     long_description=open("README.md").read(),
-    version="mitaka",
-    url="http://www.brocade.com",
+    version="octa",
+    url="https://www.pulsesecure.net",
     packages=[
-        "brocade_neutron_lbaas",
-        "brocade_neutron_lbaas_tenant_customizations_db",
-        "brocade_neutron_lbaas.vtm"
+        "pulse_neutron_lbaas",
+        "pulse_neutron_lbaas_tenant_customizations_db"
     ],
     scripts=[
-        "scripts/brocade_lbaas_config_generator",
-        "scripts/brocade_lbaas_tenant_customization"
+        "scripts/pulse_lbaas_config_generator",
+        "scripts/pulse_lbaas_tenant_customization"
     ],
     data_files=[
-        ("/etc/neutron/services/loadbalancer", ["conf/brocade.conf"]),
+        ("/etc/neutron/pulse_vtm_lbaas.conf", ["conf/pulse_vtm_lbaas.conf"]),
         (driver_path, ["driver_v2.py"])
     ],
     license="Apache Software License",

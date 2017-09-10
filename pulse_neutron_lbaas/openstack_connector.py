@@ -18,7 +18,7 @@
 #
 
 import base64
-from brocade_neutron_lbaas_tenant_customizations_db import helper \
+from pulse_neutron_lbaas_tenant_customizations_db import helper \
      as customization_helper
 import json
 from keystoneclient.v3 import client as keystone_client
@@ -67,7 +67,7 @@ class OpenStackInterface(object):
         # Get connector to tenant customizations database if enabled...
         if cfg.CONF.lbaas_settings.allow_tenant_customizations is True:
             self.customizations_db = customization_helper.\
-                BrocadeLbaasTenantCustomizationsDatabaseHelper(
+                PulseLbaasTenantCustomizationsDatabaseHelper(
                     cfg.CONF.lbaas_settings.tenant_customizations_db
                 )
         else:

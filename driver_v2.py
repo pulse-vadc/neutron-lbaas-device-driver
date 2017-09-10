@@ -12,29 +12,29 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
+# Matthew Geldert (mgeldert@pulsesecure.net), Pulse Secure, LLC
 #
 
-from brocade_neutron_lbaas import device_driver
+from pulse_neutron_lbaas import device_driver
 from neutron_lbaas.drivers import driver_base
 import threading
 
 
-class BrocadeLoadBalancerDriver(driver_base.LoadBalancerBaseDriver):
+class PulseLoadBalancerDriver(driver_base.LoadBalancerBaseDriver):
 
     def __init__(self, plugin):
-        super(BrocadeLoadBalancerDriver, self).__init__(plugin)
-        self.load_balancer = BrocadeLoadBalancerManager(self)
-        self.listener = BrocadeListenerManager(self)
-        self.pool = BrocadePoolManager(self)
-        self.member = BrocadeMemberManager(self)
-        self.health_monitor = BrocadeHealthMonitorManager(self)
-        self.l7policy = L7PolicyManager(self)
-        self.l7rule = L7RuleManager(self)
-        self.device_driver = device_driver.BrocadeDeviceDriverV2(plugin)
+        super(PulseLoadBalancerDriver, self).__init__(plugin)
+        self.load_balancer = PulseLoadBalancerManager(self)
+        self.listener = PulseListenerManager(self)
+        self.pool = PulsePoolManager(self)
+        self.member = PulseMemberManager(self)
+        self.health_monitor = PulseHealthMonitorManager(self)
+        self.l7policy = PulseL7PolicyManager(self)
+        self.l7rule = PulseL7RuleManager(self)
+        self.device_driver = device_driver.PulseDeviceDriverV2(plugin)
 
 
-class BrocadeLoadBalancerManager(driver_base.BaseLoadBalancerManager):
+class PulseLoadBalancerManager(driver_base.BaseLoadBalancerManager):
     def create(self, context, obj):
         thread = threading.Thread(target=self._create, args=(context, obj))
         thread.start()
@@ -67,7 +67,7 @@ class BrocadeLoadBalancerManager(driver_base.BaseLoadBalancerManager):
         return self.driver.device_driver.stats(lb_obj)
 
 
-class BrocadeListenerManager(driver_base.BaseListenerManager):
+class PulseListenerManager(driver_base.BaseListenerManager):
     def create(self, context, obj):
         try:
             self.driver.device_driver.create_listener(obj)
@@ -90,7 +90,7 @@ class BrocadeListenerManager(driver_base.BaseListenerManager):
         self.successful_completion(context, obj, delete=True)
 
 
-class BrocadePoolManager(driver_base.BasePoolManager):
+class PulsePoolManager(driver_base.BasePoolManager):
     def create(self, context, obj):
         try:
             self.driver.device_driver.create_pool(obj)
@@ -113,7 +113,7 @@ class BrocadePoolManager(driver_base.BasePoolManager):
         self.successful_completion(context, obj, delete=True)
 
 
-class BrocadeMemberManager(driver_base.BaseMemberManager):
+class PulseMemberManager(driver_base.BaseMemberManager):
     def create(self, context, obj):
         try:
             self.driver.device_driver.create_member(obj)
@@ -136,7 +136,7 @@ class BrocadeMemberManager(driver_base.BaseMemberManager):
         self.successful_completion(context, obj, delete=True)
 
 
-class BrocadeHealthMonitorManager(driver_base.BaseHealthMonitorManager):
+class PulseHealthMonitorManager(driver_base.BaseHealthMonitorManager):
     def create(self, context, obj):
         try:
             self.driver.device_driver.create_healthmonitor(obj)
@@ -159,7 +159,7 @@ class BrocadeHealthMonitorManager(driver_base.BaseHealthMonitorManager):
         self.successful_completion(context, obj, delete=True)
 
 
-class L7PolicyManager(driver_base.BaseL7PolicyManager):
+class PulseL7PolicyManager(driver_base.BaseL7PolicyManager):
     def create(self, context, obj):
         try:
             self.driver.device_driver.create_l7_policy(obj)
@@ -182,7 +182,7 @@ class L7PolicyManager(driver_base.BaseL7PolicyManager):
         self.successful_completion(context, obj, delete=True)
 
 
-class L7RuleManager(driver_base.BaseL7RuleManager):
+class PulseL7RuleManager(driver_base.BaseL7RuleManager):
     def create(self, context, obj):
         try:
             self.driver.device_driver.create_l7_rule(obj)
