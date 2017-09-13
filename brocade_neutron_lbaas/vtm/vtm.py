@@ -463,6 +463,9 @@ class vTM(ProductInstance):
     def __init__(self, base_url, username, password, initialize_config=False,
                  connectivity_test_url=None):
         url = "%s/config/active" % base_url
+        self.uuid_test_url = "{}/status/local_tm/information".format(
+            base_url
+        )
         super(vTM, self).__init__(
             url, username, password, vTMConfigObjectList,
             initialize_config, connectivity_test_url
