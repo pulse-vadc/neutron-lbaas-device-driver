@@ -455,7 +455,7 @@ class vTM(ProductInstance):
             "class": ConfigObjectFactory(
                 "VirtualServer",
                 ["enabled", "protocol", "port", "pool"],
-                vTMVirtualServerObject
+                vTMConfigObject
             ),
             "path": "virtual_servers", "name": "vserver", "plural": "s"}
     }
