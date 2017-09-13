@@ -74,17 +74,6 @@ class vTMConfigObject(ConfigObject):
                 obj_dict['properties']['basic'][field] = value
         return obj_dict
 
-class vTMVirtualServerObject(vTMConfigObject):
-    _url_modifiers = {
-        "PUT": {
-            "type": "querystring", "value": "expert_keys=basic/max_concurrent_connections"
-        },
-        "GET": {
-            "type": "querystring", "value": "expert_keys=basic/max_concurrent_connections"
-        }
-    }
-
-
 
 ###############################################################################
 #                               Object 'list' classes                         #
