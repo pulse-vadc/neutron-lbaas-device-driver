@@ -283,7 +283,7 @@ class PollInstance(Thread):
         )
         for counter in xrange(100):
             try:
-                if not vtm.test_connectivity():
+                if not vtm.test_uuid_set():
                     raise self.ConnectivityTestFailedError()
                 self.instance.rest_enabled = True
                 self.instance.license_name = \

@@ -984,7 +984,7 @@ write_files:
                 remote_hostname = local_hostname[:-3] + "sec"
             else:
                 remote_hostname = local_hostname[:-3] + "pri"
-            url = "https://%s:9070/api/tm/3.5/config/active/extra_files/last_update" % (
+            url = "https://%s:9070/api/tm/4.0/config/active/extra_files/last_update" % (
                 remote_hostname
             )
             last_update = requests.get(url, auth=('admin', '{3}'), verify=False).text

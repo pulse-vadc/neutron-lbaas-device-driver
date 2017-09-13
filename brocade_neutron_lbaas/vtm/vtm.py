@@ -500,6 +500,18 @@ class vTM(ProductInstance):
         self.global_settings.connector = global_conn
         self.security.connector = security_conn
 
+    def test_uuid_set(self):
+        try:
+            response = self.http_session.get(
+                self.uuid_test_url, timeout=3
+            )
+        except Exception as e:
+            return False
+        if response.status_code == 200:
+            if response.json()['information']['uuid']:
+                return True
+        return False
+
     def get_nodes_in_cluster(self):
         response = self.http_session.get("%s/traffic_managers" % (
             self.instance_url
