@@ -73,13 +73,18 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         try:
             self._assert_not_mgmt_network(lb.vip_subnet_id)
             hostname = self._get_hostname(lb)
+            count = 0
+            if self.openstack_connector.subnet_in_use(lb):
+                while not self.openstack_connector.vtm_exists(hostname):
+                    count += 1
+                    sleep(5)
+                    if count > 5:
+                        break;
             if not self.openstack_connector.vtm_exists(hostname):
                 self._spawn_vtm(hostname, lb)
                 sleep(5)
             self.update_loadbalancer(lb, None)
             vtm = self._get_vtm(hostname)
-            #self._create_bw_class(vtm, lb)
-            #self._create_bw_trafficscript(vtm)
             self._update_sd_bandwidth(vtm, hostname)
             description_updater_thread = DescriptionUpdater(
                 self.openstack_connector, vtm, lb, hostname
