@@ -786,9 +786,9 @@ class OpenStackInterface(object):
             "appliance!licence_agreed": "Yes",
             "rest!port": cfg.CONF.vtm_settings.rest_port,
             "appliance!gateway": data_subnet['gateway_ip'] or mgmt_subnet['gateway_ip'],
-            "appliance!if!eth0!autoneg": "Yes",
-            "appliance!if!eth0!mtu": cfg.CONF.vtm_settings.mtu,
-            "appliance!ip!eth0!isexternal": "No",
+            "appliance!if!ens3!autoneg": "Yes",
+            "appliance!if!ens3!mtu": cfg.CONF.vtm_settings.mtu,
+            "appliance!ip!ens3!isexternal": "No",
             "appliance!ssh!port": "2222",
             "rest!bindips": bind_ip,
             "control!bindip": bind_ip if cluster_data else "127.0.0.1",
@@ -823,41 +823,41 @@ class OpenStackInterface(object):
             # Add static routes from subnet 'host_routes' fields
             for host_route in mgmt_subnet['host_routes']:
                 dest = "appliance!routes!%s" % host_route['destination'].split("/")[0]
-                replay_data["%s!if" % dest] = "eth0"
+                replay_data["%s!if" % dest] = "ens3"
                 replay_data["%s!mask" % dest] = self.get_netmask(host_route['destination'])
                 replay_data["%s!gw" % dest] = host_route['nexthop']
             for host_route in data_subnet['host_routes']:
                 dest = "appliance!routes!%s" % host_route['destination'].split("/")[0]
-                replay_data["%s!if" % dest] = "eth1"
+                replay_data["%s!if" % dest] = "ens4"
                 replay_data["%s!mask" % dest] = self.get_netmask(host_route['destination'])
                 replay_data["%s!gw" % dest] = host_route['nexthop']
             replay_data["appliance!hosts!%s" % hostname] = \
                 mgmt_port['fixed_ips'][0]['ip_address']
-            replay_data["appliance!ip!eth0!addr"] = \
+            replay_data["appliance!ip!ens3!addr"] = \
                 mgmt_port['fixed_ips'][0]['ip_address']
-            replay_data["appliance!ip!eth0!mask"] = self.get_netmask(
+            replay_data["appliance!ip!ens3!mask"] = self.get_netmask(
                 mgmt_subnet['cidr']
             )
-            replay_data["appliance!if!eth1!autoneg"] = "Yes"
-            replay_data["appliance!if!eth1!mtu"] = cfg.CONF.vtm_settings.mtu
-            replay_data["appliance!ip!eth1!isexternal"] = "No"
-            replay_data["appliance!ip!eth1!addr"] = \
+            replay_data["appliance!if!ens4!autoneg"] = "Yes"
+            replay_data["appliance!if!ens4!mtu"] = cfg.CONF.vtm_settings.mtu
+            replay_data["appliance!ip!ens4!isexternal"] = "No"
+            replay_data["appliance!ip!ens4!addr"] = \
                 data_port['fixed_ips'][0]['ip_address']
-            replay_data["appliance!ip!eth1!mask"] = self.get_netmask(
+            replay_data["appliance!ip!ens4!mask"] = self.get_netmask(
                 data_subnet['cidr']
             )
         else:
             # Add static routes from subnet 'host_routes' field
             for host_route in data_subnet['host_routes']:
                 dest = "appliance!routes!%s" % host_route['destination'].split("/")[0]
-                replay_data["%s!if" % dest] = "eth0"
+                replay_data["%s!if" % dest] = "ens3"
                 replay_data["%s!mask" % dest] = self.get_netmask(host_route['destination'])
                 replay_data["%s!gw" % dest] = host_route['nexthop']
             replay_data["appliance!hosts!%s" % hostname] = \
                 data_port['fixed_ips'][0]['ip_address']
-            replay_data["appliance!ip!eth0!addr"] = \
+            replay_data["appliance!ip!ens3!addr"] = \
                 data_port['fixed_ips'][0]['ip_address']
-            replay_data["appliance!ip!eth0!mask"] = self.get_netmask(
+            replay_data["appliance!ip!ens3!mask"] = self.get_netmask(
                 data_subnet['cidr']
             )
         if cluster_data:

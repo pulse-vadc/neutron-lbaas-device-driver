@@ -593,7 +593,7 @@ class DescriptionUpdater(Thread):
             tm = self.vtm.traffic_managers.get(hostname)
             ip_addresses.append([
                 nic['addr'] for nic in tm.appliance__ip
-                if nic['name'] == "eth1"
+                if nic['name'] == "ens4"
             ][0])
         neutron = self.openstack_connector.get_neutron_client()
         while True:
