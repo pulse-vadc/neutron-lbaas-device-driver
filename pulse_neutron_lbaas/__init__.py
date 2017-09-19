@@ -42,12 +42,11 @@ lbaas_setting_opts = [
     cfg.StrOpt('deployment_model', help=_(
                'SHARED for a shared pool of vTMs. '
                'PER_TENANT for deploying private vTM instance per tenant. '
-               'PER_LB for deploying private vTM instance per loadbalancer'
+               'PER_LB for deploying private vTM instance per loadbalancer.'
+               'PER_SUBNET for deploying private vTM instance per subnet.'
                )),
     cfg.StrOpt('flavor_id',
                help=_('ID of flavor to use for vTM instance')),
-    cfg.StrOpt('keystone_version', default="3",
-               help=_('Version of Keystone API to use')),
     cfg.BoolOpt('https_offload', default=True,
                 help=_('Enable HTTPS termination')),
     cfg.StrOpt('image_id',
@@ -59,20 +58,26 @@ lbaas_setting_opts = [
     cfg.StrOpt('lbaas_project_username', default="lbaas_admin",
                help=_('Username for LBaaS operations')),
     cfg.StrOpt('management_mode', default='FLOATING_IP',
-               help=_('Whether to use floating IP or dedicated mgmt network')),
+               help=_('Whether to use floating IP (FLOATING_IP) or '
+                      'dedicated mgmt network (MGMT_NET)')),
     cfg.StrOpt('management_network',
                help=_('Neutron ID of network for admin traffic')),
+    cfg.StrOpt('os_admin_password', default="password",
+               help=_('Password of OpenStack admin account')),
+    cfg.StrOpt('os_admin_project_id',
+               help=_('Keystone ID of admin project')),
+    cfg.StrOpt('os_admin_username', default="admin",
+               help=_('LBaaS instance container project')),
     cfg.IntOpt('passive_vtms', default=1,
                help=_('Number of passive vTMs to add to TrafficIP groups')),
     cfg.ListOpt('ports',
                help=_('Neutron port IDs of Stingray traffic-handling ports')),
-    cfg.StrOpt('os_admin_password', default="password",
-               help=_('Password of OpenStack admin account')),
-    cfg.StrOpt('os_admin_username', default="admin",
-               help=_('LBaaS instance container project')),
-    cfg.StrOpt('os_admin_project_id',
-               help=_('Keystone ID of admin project')),
     cfg.StrOpt('primary_az', help=_('Availability Zone for primary vTM')),
+    cfg.BoolOpt('roll_back_on_error', default=True, help=_(
+                'If True, an error during loadbalancer provisioning will '
+                'result in newly-created resources being deleted so as to '
+                'return the system to its previous state. Set to False if '
+                'you wish to leave resources in place for troubleshooting.')),
     cfg.StrOpt('secondary_az', help=_('Availability Zone for secondary vTM')),
     cfg.ListOpt('shared_subnets', help=_(
                 'List of Neutron subnet IDs that represent the available '
@@ -115,9 +120,9 @@ vtm_setting_opts = [
                 help=_('Allow read-only access to the web GUI')),
     cfg.IntOpt('mtu', default=1450,
                help=_('MTU for the vTM instance interfaces')),
-    cfg.ListOpt('nameservers',
+    cfg.ListOpt('nameservers', default=[],
                help=_('List of nameservers for vTM to use')),
-    cfg.StrOpt('password',
+    cfg.StrOpt('password', default=None,
                help=_('Password of vTM admin account')),
     cfg.IntOpt('rest_port', default=9070,
                help=_('TCP port that the vTM REST daemon listens on')),
@@ -127,7 +132,7 @@ vtm_setting_opts = [
                help=_('Community string for SNMP requests')),
     cfg.BoolOpt('snmp_enabled', default=True,
                 help=_('Allow SNMP requests/traps on the management network')),
-    cfg.IntOpt('snmp_port', default=161,
+    cfg.StrOpt('snmp_port', default=161,
                help=_('UDP port that the vTM SNMP server listens on')),
     cfg.StrOpt('snmp_traphost',
                help=_('Host to send SNMP traps to')),
@@ -150,16 +155,14 @@ def check_required_settings(required):
     key_missing = False
     for section, required_settings in required.iteritems():
         section_key_missing = False
-        error_msg += "Missing from section [%s]:\n" % section
+        error_msg += "Missing from section [{}]:\n".format(section)
         configured_settings = [
             key for key, value in getattr(cfg.CONF, section).iteritems()
             if value is not None
         ]
         for setting, help_string in required_settings.iteritems():
             if setting not in configured_settings:
-                error_msg += "%s: %s\n" % (
-                        setting, help_string
-                )
+                error_msg += "{}: {}\n".format(setting, help_string)
                 section_key_missing = True
                 key_missing = True
         if not section_key_missing:
@@ -196,7 +199,7 @@ if cfg.CONF.lbaas_settings.deployment_model == "SHARED":
             "password": "Password for the vTM cluster admin user"
         }
     })
-    import .driver_shared_cluster as selected_driver
+    import driver_shared_cluster as selected_driver
 else:
     check_required_settings({
         "lbaas_settings": {
@@ -208,7 +211,7 @@ else:
                 "For MGMT_NET mode, the Neutron UUID of the management "
                 "network. For FLOATING_IP mode, the Neutron UUID of the "
                 "network on which to raise the floating IPs.",
-            "openstack_password":
+            "os_admin_password":
                 "Password of OpenStack admin user",
             "service_endpoint_address":
                 "Service Endpoint Address of Services Director cluster",
@@ -228,7 +231,7 @@ else:
         }
     })
     if cfg.CONF.lbaas_settings.deploy_ha_pairs is True:
-        import .driver_private_instances_ha as selected_driver
+        import driver_private_instances_ha as selected_driver
     else:
-        import .driver_private_instances as selected_driver
+        import driver_private_instances as selected_driver
 device_driver = selected_driver

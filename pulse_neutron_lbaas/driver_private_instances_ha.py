@@ -100,7 +100,7 @@ class PulseDeviceDriverV2(vTMDeviceDriverPrivateInstances):
             lb.tenant_id, "lbaas_settings", "deployment_model"
         )
         hostnames = self._get_hostname(lb)
-        if deployment_model == "PER_TENANT":
+        if deployment_model in ["PER_TENANT", "PER_SUBNET"]:
             vtm = self._get_vtm(hostnames)
             vtm.tip_group.delete(lb.id)
             self._touch_last_modified_timestamp(vtm)
@@ -110,7 +110,7 @@ class PulseDeviceDriverV2(vTMDeviceDriverPrivateInstances):
                     "last loadbalancer deleted; destroying vTM".format(lb.id))
                 )
                 self._destroy_vtm(hostnames, lb)
-            else:
+            elif deployment_model == "PER_TENANT":
                 # Delete subnet ports if no longer required
                 if self.openstack_connector.subnet_in_use(lb) is False:
                     self._detach_subnet_port(vtm, hostnames, lb)
@@ -166,6 +166,7 @@ class PulseDeviceDriverV2(vTMDeviceDriverPrivateInstances):
         configuration proxying.
         """
         services_director = self._get_services_director()
+        identifier = self.openstack_connector.get_identifier(lb)
         # Initialize lists of items to clean up if operation fails
         port_ids = []
         security_groups = []
@@ -177,7 +178,8 @@ class PulseDeviceDriverV2(vTMDeviceDriverPrivateInstances):
             if cfg.CONF.lbaas_settings.management_mode == "FLOATING_IP":
                 # Primary data port (floating IP)
                 (port, sec_grp, mgmt_ip) = self.openstack_connector.create_port(
-                    lb, hostnames[0], create_floating_ip=True, cluster=True
+                    lb, hostnames[0], create_floating_ip=True, cluster=True,
+                    identifier=identifier
                 )
                 ports[hostnames[0]] = {
                     "ports": {
@@ -206,11 +208,11 @@ class PulseDeviceDriverV2(vTMDeviceDriverPrivateInstances):
             elif cfg.CONF.lbaas_settings.management_mode == "MGMT_NET":
                 # Primary data port (management network)
                 (data_port, data_sec_grp, junk) = self.openstack_connector.create_port(
-                    lb, hostnames[0], cluster=True
+                    lb, hostnames[0], cluster=True, identifier=identifier
                 )
                 # Primary mgmt port (management network)
                 (mgmt_port, mgmt_sec_grp, mgmt_ip) = self.openstack_connector.create_port(
-                    lb, hostnames[0], mgmt_port=True, cluster=True
+                    lb, hostnames[0], mgmt_port=True, cluster=True, identifier=identifier
                 )
                 ports[hostnames[0]] = {
                     "ports": {
@@ -305,16 +307,17 @@ class PulseDeviceDriverV2(vTMDeviceDriverPrivateInstances):
                         )
                     )
         except Exception as e:
-            for host in hostnames:
-                try:
-                    services_director.unmanaged_instance.delete(host)
-                except:
-                    pass
-            self.openstack_connector.clean_up(
-                instances=vms,
-                security_groups=security_groups,
-                ports=port_ids
-            )
+            if cfg.CONF.lbaas_settings.roll_back_on_error is True:
+                for host in hostnames:
+                    try:
+                        services_director.unmanaged_instance.delete(host)
+                    except:
+                        pass
+                self.openstack_connector.clean_up(
+                    instances=vms,
+                    security_groups=security_groups,
+                    ports=port_ids
+                )
             raise e
 
     def _destroy_vtm(self, hostnames, lb):

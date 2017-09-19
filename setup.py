@@ -7,14 +7,14 @@ driver_path = None
 
 try:
     cmd_output = check_output(
-        ["/usr/bin/locate", "neutron_lbaas/drivers/brocade/driver_v2.py"]
+        ["/usr/bin/locate", "neutron_lbaas/drivers/"]
     )
     if len(cmd_output) > 0:
         path_guess = os.path.dirname(cmd_output.split("\n")[0])
+        path_guess += "/pulse"
         confirm = raw_input(
-            "Path located: %s\n"
-            "Is this the correct installation path for your Brocade "
-            "Neutron LBaaS plugin driver? [y/n]" % path_guess
+            "Install Pulse Neutron LBaaS plugin into '{}'? [y/n] "
+            "".format(path_guess)
         )
         if confirm.strip().lower() == "y":
             driver_path = path_guess
@@ -23,9 +23,15 @@ except:
 
 if driver_path is None:
     driver_path = raw_input(
-        "Please enter the full path of the directory where the Brocade "
-        "Neutron LBaaS plugin driver should be installed: "
+        "Please enter the full path of the directory where the Pulse "
+        "Neutron LBaaS plugin should be installed: "
     )
+
+if not os.path.exists(driver_path):
+    try:
+        os.makedirs(driver_path)
+    except IOError as e:
+        print "Failed to install plugin to '{}': {}".format(driver_path, e)
 
 setup(
     name="pulse_neutron_lbaas",
@@ -44,8 +50,9 @@ setup(
         "scripts/pulse_lbaas_tenant_customization"
     ],
     data_files=[
-        ("/etc/neutron/pulse_vtm_lbaas.conf", ["conf/pulse_vtm_lbaas.conf"]),
-        (driver_path, ["driver_v2.py"])
+        ("/etc/neutron", ["conf/pulse_vtm_lbaas.conf"]),
+        (driver_path, ["driver_v2.py"]),
+        (driver_path, ["__init__.py"])
     ],
     license="Apache Software License",
     platforms=["Linux"],

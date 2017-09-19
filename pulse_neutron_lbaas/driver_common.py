@@ -122,14 +122,21 @@ class vTMDeviceDriverCommon(object):
         }}
         vserver_config['properties']['basic'].update(listen_on_settings)
         # Configure SSL termination...
-        if listener.protocol == "TERMINATED_HTTPS":
-            if cfg.CONF.lbaas_settings.https_offload is False:
-                raise Exception("HTTPS termination has been disabled by "
-                                "the administrator")
+        if listener.https_offload == "YES":
+            vserver_config['properties']['basic']['protocol'] = "http"
             vserver_config['properties']['basic']['ssl_decrypt'] = True
-            vserver_config['properties']['ssl'] = self._get_ssl_config(
-                vtm, listener
+            vserver_config['properties']['ssl'] = {
+                "server_cert_default": listener.id,
+                "server_cert_host_mapping": []
+            }
+            vtm.ssl_server_cert.create(
+                listener.id,
+                private=listener.https_private_key,
+                public=listener.https_public_key
             )
+        elif old and old.https_offload == "YES":
+            vserver_config['properties']['basic']['ssl_decrypt'] = False
+            vtm.ssl_server_cert.delete(listener.id)
         # Configure connection limiting...
         if listener.connection_limit > 0:
             vserver_config['properties']['basic']\
@@ -147,7 +154,8 @@ class vTMDeviceDriverCommon(object):
             if not old or old.protocol_port != listener.protocol_port:
                 protocol = 'udp' if listener.protocol == "UDP" else 'tcp'
                 self.openstack_connector.allow_port(
-                    listener.loadbalancer, listener.protocol_port, protocol
+                    listener.loadbalancer, listener.protocol_port, identifier,
+                    protocol
                 )
                 if old:
                     self.openstack_connector.block_port(
@@ -160,28 +168,8 @@ class vTMDeviceDriverCommon(object):
         # Delete Virtual Server
         vs.delete()
         # Delete associated SSL certificates if not still in use
-        if listener.protocol == "TERMINATED_HTTPS":
-            tls_containers = [
-                self._get_container_id(listener.default_tls_container_id)
-            ]
-            try:
-                tls_containers += [
-                    self._get_container_id(container.tls_container_id)
-                    for container in listener.sni_containers
-                ]
-            except TypeError:
-                pass
-            for container in tls_containers:
-                cert_in_use = False
-                for vserver in vtm.vservers.list():
-                    vs = vtm.vserver.get(vserver)
-                    if vs.ssl__server_cert_default == container:
-                        cert_in_use = True
-                    for mapping in vs.ssl__server_cert_host_mapping:
-                        if mapping['certificate'] == container:
-                            cert_in_use = True
-                if cert_in_use is False:
-                    vtm.ssl_server_cert.delete(container)
+        if listener.https_offload == "YES":
+            vtm.ssl_server_cert.delete(listener.id)
         if use_security_group:
             # Delete security group rule for the listener port/protocol
             protocol = 'udp' if listener.protocol == "UDP" else 'tcp'
@@ -543,8 +531,10 @@ class vTMDeviceDriverCommon(object):
         return trafficscript
 
     def _generate_password(self):
-        chars = ascii_letters + digits
-        return "".join(choice(chars) for _ in range(randint(12, 16)))
+        if cfg.CONF.vtm_settings.password is None:
+            chars = ascii_letters + digits
+            return "".join(choice(chars) for _ in range(randint(12, 16)))
+        return cfg.CONF.vtm_settings.password
 
     def _get_container_id(self, container_ref):
         return container_ref[container_ref.rfind("/")+1:]

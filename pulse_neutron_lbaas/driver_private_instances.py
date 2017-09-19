@@ -66,16 +66,34 @@ class PulseDeviceDriverV2(vTMDeviceDriverCommon):
             lb.tenant_id, "lbaas_settings", "deployment_model"
         )
         hostname = self._get_hostname(lb)
-        if deployment_model == "PER_TENANT":
+        vtm = None
+        if deployment_model == "PER_LOADBALANCER":
+            self._spawn_vtm(hostname, lb)
+        elif deployment_model == "PER_SUBNET":
+            # In case several loadbalancers are created in a batch, give an
+            # existing instance time to come up before spawning a new one.
+            count = 0
+            if self.openstack_connector.subnet_in_use(lb):
+                while not self.openstack_connector.vtm_exists(hostname):
+                    count += 1
+                    sleep(5)
+                    if count > 5:
+                        break;
+            # No instance is coming up so spawn one.
             if not self.openstack_connector.vtm_exists(hostname):
+                self._spawn_vtm(hostname, lb)
+                sleep(5)
+            self.update_loadbalancer(lb, None)
+        elif deployment_model == "PER_TENANT":
+            if not self.openstack_connector.vtm_exists(lb.tenant_id, hostname):
                 self._spawn_vtm(hostname, lb)
                 sleep(5)
             elif not self.openstack_connector.vtm_has_subnet_port(hostname,lb):
                 vtm = self._get_vtm(hostname)
                 self._attach_subnet_port(vtm, hostname, lb)
             self.update_loadbalancer(lb, None)
-        elif deployment_model == "PER_LOADBALANCER":
-            self._spawn_vtm(hostname, lb)
+        if vtm is None:
+            vtm = self._get_vtm(hostname)
         description_updater_thread = DescriptionUpdater(
             self.openstack_connector, vtm, lb, hostname
         )
@@ -92,7 +110,7 @@ class PulseDeviceDriverV2(vTMDeviceDriverCommon):
         deployment_model = self._get_setting(
             lb.tenant_id, "lbaas_settings", "deployment_model"
         )
-        if deployment_model == "PER_TENANT":
+        if deployment_model in ["PER_TENANT", "PER_SUBNET"]:
             hostname = self._get_hostname(lb)
             vtm = self._get_vtm(hostname)
             tip_config = {"properties": {
@@ -162,7 +180,7 @@ class PulseDeviceDriverV2(vTMDeviceDriverCommon):
             listener.tenant_id, "lbaas_settings", "deployment_model"
         )
         hostname = self._get_hostname(listener.loadbalancer)
-        if deployment_model == "PER_TENANT":
+        if deployment_model in ["PER_TENANT", "PER_SUBNET"]:
             listen_on_settings['listen_on_traffic_ips'] = [
                 listener.loadbalancer.id
             ]
@@ -178,9 +196,6 @@ class PulseDeviceDriverV2(vTMDeviceDriverCommon):
 
     @logging_wrapper
     def delete_listener(self, listener):
-        deployment_model = self._get_setting(
-            listener.tenant_id, "lbaas_settings", "deployment_model"
-        )
         hostname = self._get_hostname(listener.loadbalancer)
         vtm = self._get_vtm(hostname)
         super(PulseDeviceDriverV2, self).delete_listener(listener, vtm)
@@ -427,6 +442,7 @@ class PulseDeviceDriverV2(vTMDeviceDriverCommon):
         The VM is registered with Services Director to provide licensing and
         configuration proxying.
         """
+        identifier = self.openstack_connector.get_identifier(lb)
         # Initialize lists for roll-back on error
         port_ids = []
         security_groups = []
@@ -436,17 +452,18 @@ class PulseDeviceDriverV2(vTMDeviceDriverCommon):
             password = self._generate_password()
             if cfg.CONF.lbaas_settings.management_mode == "FLOATING_IP":
                 port, sec_grp, mgmt_ip = self.openstack_connector.create_port(
-                    lb, hostname, create_floating_ip=True
+                    lb, hostname, create_floating_ip=True,
+                    identifier=identifier
                 )
                 ports = {"data": port, "mgmt": None}
                 port_ids.append(port['id'])
                 security_groups = [sec_grp]
             elif cfg.CONF.lbaas_settings.management_mode == "MGMT_NET":
                 data_port, sec_grp,junk = self.openstack_connector.create_port(
-                    lb, hostname
+                    lb, hostname, identifier=identifier
                 )
                 (mgmt_port, mgmt_sec_grp, mgmt_ip) = self.openstack_connector.create_port(
-                    lb, hostname, mgmt_port=True
+                    lb, hostname, mgmt_port=True, identifier=identifier
                 )
                 ports = {"data": data_port, "mgmt": mgmt_port}
                 security_groups = [sec_grp, mgmt_sec_grp]
@@ -546,6 +563,7 @@ class PollInstance(Thread):
             try:
                 if not vtm.test_uuid_set():
                     raise self.ConnectivityTestFailedError()
+                sleep(2)  # Time for MTU settings to take effect
                 self.instance.rest_enabled = True
                 self.instance.license_name = \
                     cfg.CONF.services_director_settings.fla_license

@@ -52,7 +52,7 @@ class OpenStackInterface(object):
         self.lbaas_project_id = cfg.CONF.lbaas_settings.lbaas_project_id
         self.lbaas_username = cfg.CONF.lbaas_settings.lbaas_project_username
         # Get Neutron and Nova API endpoints...
-        keystone = self.get_keystone_client(lbaas_project=True)
+        keystone = self.get_keystone_client(lbaas_project=False)
         neutron_service = keystone.services.find(name="neutron")
         nova_service = keystone.services.find(name="nova")
         self.neutron_endpoint = keystone.endpoints.find(
@@ -85,13 +85,14 @@ class OpenStackInterface(object):
         if ports['mgmt'] is not None:
             nics.insert(0, {"port": ports['mgmt']['id']})
         instance = self.create_server(
+            tenant_id=lb.tenant_id,
             hostname=hostname,
             user_data=self._generate_cloud_init_file(lb, user_data),
             nics=nics,
             password=password,
             avoid_host_of=avoid
         )
-        self.set_server_lock(instance['id'], lock=True)
+        sleep(2)
         self._await_build_complete(instance['id'])
         return instance
 
@@ -231,6 +232,7 @@ class OpenStackInterface(object):
                     identifier=None):
         if identifier is None and security_group is None:
             raise Exception("Must specify either security_group or identifier")
+        # Gather parameters and create the port
         neutron = self.get_neutron_client()
         if mgmt_port is False:
             subnet = neutron.show_subnet(lb.vip_subnet_id)
@@ -248,15 +250,7 @@ class OpenStackInterface(object):
                 {'subnet_id': lb.vip_subnet_id}
             ]
         port = neutron.create_port(port_config)['port']
-
-        deployment_model = self._get_setting(
-            lb.tenant_id, "lbaas_settings", "deployment_model"
-        )
-        if deployment_model == "PER_LOADBALANCER":
-            sec_grp_uuid = lb.id
-        elif deployment_model == "PER_TENANT":
-            sec_grp_uuid = lb.tenant_id
-
+        # Create or assign the appropriate security group to the port
         if create_floating_ip is True:
             floatingip = self.create_floatingip(port['id'])
             mgmt_ip = floatingip['floatingip']['floating_ip_address']
@@ -375,6 +369,15 @@ class OpenStackInterface(object):
                     port=cfg.CONF.vtm_settings.rest_port,
                     src_addr=socket.gethostbyname(server)
                 )
+            # SSH and ICMP access
+            self.create_security_group_rule(
+                sec_grp['security_group']['id'],
+                port=cfg.CONF.vtm_settings.ssh_port
+            )
+            self.create_security_group_rule(
+                sec_grp['security_group']['id'],
+                protocol="icmp"
+            )
             # SNMP access
             if cfg.CONF.vtm_settings.snmp_enabled is True:
                 for cidr in cfg.CONF.vtm_settings.snmp_allow_from:
@@ -415,28 +418,29 @@ class OpenStackInterface(object):
             )
         return sec_grp
 
-    def create_security_group_rule(self, sec_grp_id, port,
+    def create_security_group_rule(self, sec_grp_id, port=None,
                                    src_addr=None, remote_group=None,
                                    direction="ingress", protocol='tcp'):
         """
         Creates the designatted rule in a security group.
         """
-        if isinstance(port, tuple):
-            port_min = port[0]
-            port_max = port[1]
-        else:
-            port_min = port
-            port_max = port
         neutron = self.get_neutron_client()
         new_rule = {"security_group_rule": {
             "direction": direction,
-            "port_range_min": port_min,
             "ethertype": "IPv4",
-            "port_range_max": port_max,
             "protocol": protocol,
             "security_group_id": sec_grp_id,
             "tenant_id": self.lbaas_project_id
         }}
+        if port is not None:
+            if isinstance(port, tuple):
+                port_min = port[0]
+                port_max = port[1]
+            else:
+                port_min = port
+                port_max = port
+            new_rule['security_group_rule']['port_range_max'] = port_max
+            new_rule['security_group_rule']['port_range_min'] = port_min
         if src_addr:
             new_rule['security_group_rule']['remote_ip_prefix'] = src_addr
         if remote_group:
@@ -447,18 +451,12 @@ class OpenStackInterface(object):
             if not e.message.startswith("Security group rule already exists"):
                 raise
 
-    def allow_port(self, lb, port, protocol='tcp'):
+    def allow_port(self, lb, port, identifier, protocol='tcp'):
         """
         Adds access to a given port to a security group.
         """
         # Get the name of the security group for the "loadbalancer"
-        deployment_model = self._get_setting(
-            lb.tenant_id, "lbaas_settings", "deployment_model"
-        )
-        if deployment_model == "PER_LOADBALANCER":
-            sec_grp_name = "lbaas-{}".format(lb.id)
-        elif deployment_model == "PER_TENANT":
-            sec_grp_name = "lbaas-{}".format(lb.tenant_id)
+        sec_grp_name = "lbaas-%s" % identifier
         # Get the security group
         neutron = self.get_neutron_client()
         sec_grp = neutron.list_security_groups(
@@ -558,7 +556,7 @@ class OpenStackInterface(object):
         neutron = self.get_neutron_client()
         return neutron.show_subnet(subnet_id)['subnet']['network_id']
 
-    def create_server(self, hostname, user_data, nics, password,
+    def create_server(self, tenant_id, hostname, user_data, nics, password,
                       avoid_host_of=None):
         """
         Creates a Nova instance of the vTM image.
@@ -616,14 +614,12 @@ class OpenStackInterface(object):
         return response.json()['server']
 
     def attach_port_to_instance(self, server_id, port_id):
-        self.set_server_lock(server_id, lock=False)
         token = self.get_auth_token()
         response = requests.post(
             "{}/servers/{}/os-interface".format(self.nova_endpoint, server_id),
             data=json.dumps({"interfaceAttachment": { "port_id": port_id}}),
             headers={"X-Auth-Token": token, "Content-Type": "application/json"}
         )
-        self.set_server_lock(tenant_id, server_id, lock=True)
         if response.status_code != 200:
             raise Exception(
                 "Unable to attach port '{}' to instance '{}': {}".format(
@@ -631,7 +627,6 @@ class OpenStackInterface(object):
             ))
 
     def detach_port_from_instance(self, server_id, port_id):
-        self.set_server_lock(server_id, lock=False)
         token = self.get_auth_token()
         response = requests.delete(
             "{}/servers/{}/os-interface/{}".format(
@@ -639,7 +634,6 @@ class OpenStackInterface(object):
             ),
             headers={"X-Auth-Token": token}
         )
-        self.set_server_lock(tenant_id, server_id, lock=True)
         if response.status_code != 202:
             raise Exception(
                 "Unable to detach port '{}' from instance '{}': {}".format(
@@ -705,7 +699,6 @@ class OpenStackInterface(object):
         """
         Deletes a Nova instance.
         """
-        self.set_server_lock(server_id, lock=False)
         token = self.get_auth_token()
         requests.delete(
             "{}/servers/{}".format(self.nova_endpoint, server_id),
@@ -745,10 +738,10 @@ class OpenStackInterface(object):
             project_id = self.admin_project_id
             username = self.admin_username
         return keystone_client.Client(
-            username=self.admin_username,
-            password=self.admin_password,
-            auth_url=auth_url,
-            **param
+            username=username,
+            password=password,
+            project_id=project_id,
+            auth_url=auth_url
         )
 
     def get_auth_token(self, lbaas_project=True):
@@ -831,25 +824,25 @@ class OpenStackInterface(object):
             mgmt_subnet = neutron.show_subnet(
                 mgmt_port['fixed_ips'][0]['subnet_id']
             )['subnet']
-            static_routes['eth0'] = mgmt_subnet['host_routes']
-            static_routes['eth1'] = data_subnet['host_routes']
+            static_routes['ens3'] = mgmt_subnet['host_routes']
+            static_routes['ens4'] = data_subnet['host_routes']
             host_entries[hostname] = mgmt_port['fixed_ips'][0]['ip_address']
-            z_initial_config_data['net_eth0_addr'] = \
+            z_initial_config_data['net_ens3_addr'] = \
                 mgmt_port['fixed_ips'][0]['ip_address']
-            z_initial_config_data['net_eth0_mask'] = self.get_netmask(
+            z_initial_config_data['net_ens3_mask'] = self.get_netmask(
                 mgmt_subnet['cidr']
             )
-            z_initial_config_data['net_eth1_addr'] = \
+            z_initial_config_data['net_ens4_addr'] = \
                 data_port['fixed_ips'][0]['ip_address']
-            z_initial_config_data['net_eth1_mask'] = self.get_netmask(
+            z_initial_config_data['net_ens4_mask'] = self.get_netmask(
                 data_subnet['cidr']
             )
         else:
-            static_routes['eth0'] = data_subnet['host_routes']
+            static_routes['ens3'] = data_subnet['host_routes']
             host_entries[hostname] = data_port['fixed_ips'][0]['ip_address']
-            z_initial_config_data['net_eth0_addr'] = \
+            z_initial_config_data['net_ens3_addr'] = \
                 data_port['fixed_ips'][0]['ip_address']
-            z_initial_config_data['net_eth0_mask'] = self.get_netmask(
+            z_initial_config_data['net_ens3_mask'] = self.get_netmask(
                 data_subnet['cidr']
             )
 
@@ -889,16 +882,40 @@ class OpenStackInterface(object):
     def _generate_cloud_init_file(self, lb, config_data):
         cloud_config = {
             "write_files": [
+                # Replay file for initial config
                 {
                     "path": "/root/z-initial-config-replay",
                     "content": config_data['z-initial-config']
                 },
+                # NIC MTU settings
+                {
+                    "path": "/root/mtu-data",
+                    "content": json.dumps(
+                        {"properties": {"appliance": {
+                            "if": [
+                                {
+                                    "name": "ens3",
+                                    "mtu": cfg.CONF.vtm_settings.mtu
+                                },
+                                {
+                                    "name": "ens4",
+                                    "mtu": cfg.CONF.vtm_settings.mtu
+                                }
+                        ]}}}
+                    )
+                }
             ],
             "runcmd": [
-                "echo regenerate-uuid | zcli",
                 "export ZEUSHOME=/opt/zeus",
                 ("z-initial-config --replay-from=/root/z-initial-config-replay"
-                " --noloop --noninteractive")
+                    " --noloop --noninteractive"),
+                ('curl -k -X PUT -H "Content-Type: application/json" '
+                    '--data @/root/mtu-data --user "admin:{0}" '
+                    'https://{1}:{2}/api/tm/4.0/config/active/'
+                    'traffic_managers/{1}'.format(
+                        config_data['password'],
+                        config_data['bind_ip'],
+                        cfg.CONF.vtm_settings.rest_port))
             ]
         }
 
@@ -1042,9 +1059,8 @@ def get_last_remote_update():
         remote_hostname = local_hostname[:-3] + "sec"
     else:
         remote_hostname = local_hostname[:-3] + "pri"
-    url = "https://%s:9070/api/tm/3.5/config/active/extra_files/last_update" % (
-        remote_hostname
-    )
+    url = ("https://{{}}:9070/api/tm/4.0/config/active/extra_files/"
+           "last_update".format(remote_hostname))
     last_update = requests.get(url, auth=('admin', '{0}'), verify=False).text
     return int(last_update.strip())
 
