@@ -145,7 +145,7 @@ class PulseDeviceDriverV2(vTMDeviceDriverCommon):
             lb.tenant_id, "lbaas_settings", "deployment_model"
         )
         hostname = self._get_hostname(lb)
-        if deployment_model == "PER_TENANT":
+        if deployment_model in ["PER_TENANT", "PER_SUBNET"]:
             vtm = self._get_vtm(hostname)
             vtm.tip_group.delete(lb.id)
             self._touch_last_modified_timestamp(vtm)
@@ -210,7 +210,7 @@ class PulseDeviceDriverV2(vTMDeviceDriverCommon):
         deployment_model = self._get_setting(
             pool.tenant_id, "lbaas_settings", "deployment_model"
         )
-        if deployment_model == "PER_TENANT":
+        if deployment_model in ["PER_TENANT", "PER_SUBNET"]:
             hostname = self._get_hostname(pool.root_loadbalancer)
         elif deployment_model == "PER_LOADBALANCER":
             if pool.loadbalancer is not None:
@@ -285,7 +285,7 @@ class PulseDeviceDriverV2(vTMDeviceDriverCommon):
         )
         hostname = self._get_hostname(loadbalancer)
         vtm = self._get_vtm(hostname)
-        if deployment_model == "PER_TENANT":
+        if deployment_model in ["PER_TENANT", "PER_SUBNET"]:
             return super(PulseDeviceDriverV2, self).stats(
                 vtm, loadbalancer.vip_address
             )
@@ -537,8 +537,6 @@ class PulseDeviceDriverV2(vTMDeviceDriverCommon):
 
 
 class PollInstance(Thread):
-    class ConnectivityTestFailedError(Exception):
-        pass
 
     def __init__(self, instance, hostname, services_director, *args, **kwargs):
         self.instance = instance
@@ -560,24 +558,35 @@ class PollInstance(Thread):
             cfg.CONF.services_director_settings.password
         )
         for counter in xrange(100):
-            try:
-                if not vtm.test_uuid_set():
-                    raise self.ConnectivityTestFailedError()
+            if vtm.test_uuid_set():
                 sleep(2)  # Time for MTU settings to take effect
-                self.instance.rest_enabled = True
-                self.instance.license_name = \
-                    cfg.CONF.services_director_settings.fla_license
-                self.instance.update()
-                sleep(5)  # Needed to ensure TIP groups are always created
-                self._return = True
-                break
-            except self.ConnectivityTestFailedError:
-                pass
+                self._return = self._apply_license(vtm)
+                return
             sleep(5)
+        self._return = False
 
     def join(self):
         super(PollInstance, self).join()
         return self._return
+
+    def _apply_license(self, vtm):
+        self.instance.rest_enabled = True
+        self.instance.license_name = \
+                cfg.CONF.services_director_settings.fla_license
+        self.instance.update()
+        # Loop required because REST API access is blocked until successful
+        # application of license key to instance and license action is async
+        for i in xrange(30):
+            try:
+                license_keys = vtm.license_keys.list()
+            except Exception:
+                # This will fail until the license key has been applied
+                sleep(1)
+                continue
+            if len(license_keys) > 0:
+                return True
+            sleep(1)
+        return False
 
 
 class DescriptionUpdater(Thread):
@@ -598,11 +607,11 @@ class DescriptionUpdater(Thread):
                 if len(self.vtm.traffic_managers.list()) == 2:
                     break
                 sleep(3)
-        for hostname in self.hostnames:
-            tm = self.vtm.traffic_managers.get(hostname)
+        for tm_hostname in self.vtm.traffic_managers.list():
+            tm = self.vtm.traffic_managers.get(tm_hostname)
             ip_addresses.append([
                 nic['addr'] for nic in tm.appliance__ip
-                if nic['name'] == "eth1"
+                if nic['name'] == "ens4"
             ][0])
         neutron = self.openstack_connector.get_neutron_client()
         while True:

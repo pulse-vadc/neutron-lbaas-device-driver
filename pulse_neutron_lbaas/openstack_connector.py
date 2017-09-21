@@ -456,7 +456,7 @@ class OpenStackInterface(object):
         Adds access to a given port to a security group.
         """
         # Get the name of the security group for the "loadbalancer"
-        sec_grp_name = "lbaas-%s" % identifier
+        sec_grp_name = "lbaas-{}".format(identifier)
         # Get the security group
         neutron = self.get_neutron_client()
         sec_grp = neutron.list_security_groups(
@@ -499,13 +499,7 @@ class OpenStackInterface(object):
             if identifier_port_counter[this_identifier] > 1:
                 return False
         # Get the name of the security group for the "loadbalancer"
-        deployment_model = self._get_setting(
-            lb.tenant_id, "lbaas_settings", "deployment_model"
-        )
-        if deployment_model == "PER_LOADBALANCER":
-            sec_grp_name = "lbaas-{}".format(lb.id)
-        elif deployment_model == "PER_TENANT":
-            sec_grp_name = "lbaas-{}".format(lb.tenant_id)
+        sec_grp_name = "lbaas-{}".format(identifier)
         # Get the security group
         sec_grp = neutron.list_security_groups(
             name=sec_grp_name
