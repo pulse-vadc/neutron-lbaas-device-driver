@@ -382,6 +382,17 @@ class OpenStackInterface(object):
                     port=cfg.CONF.vtm_settings.rest_port,
                     src_addr=socket.gethostbyname(server)
                 )
+            # ICMP and SSH access
+            self.create_security_group_rule(
+                tenant_id,
+                sec_grp['security_group']['id'],
+                protocol="icmp"
+            )
+            self.create_security_group_rule(
+                tenant_id,
+                sec_grp['security_group']['id'],
+                port=2222
+            )
             # SNMP access
             for cidr in cfg.CONF.vtm_settings.snmp_allow_from:
                 self.create_security_group_rule(
@@ -427,28 +438,29 @@ class OpenStackInterface(object):
             )
         return sec_grp
 
-    def create_security_group_rule(self, tenant_id, sec_grp_id, port,
+    def create_security_group_rule(self, tenant_id, sec_grp_id, port=None,
                                    src_addr=None, remote_group=None,
                                    direction="ingress", protocol='tcp'):
         """
         Creates the designatted rule in a security group.
         """
-        if isinstance(port, tuple):
-            port_min = port[0]
-            port_max = port[1]
-        else:
-            port_min = port
-            port_max = port
         neutron = self.get_neutron_client()
         new_rule = {"security_group_rule": {
             "direction": direction,
-            "port_range_min": port_min,
             "ethertype": "IPv4",
-            "port_range_max": port_max,
             "protocol": protocol,
             "security_group_id": sec_grp_id,
             "tenant_id": self.lbaas_project_id
         }}
+        if port is not None:
+            if isinstance(port, tuple):
+                port_min = port[0]
+                port_max = port[1]
+            else:
+                port_min = port
+                port_max = port
+            new_rule['security_group_rule']['port_range_max'] = port_max
+            new_rule['security_group_rule']['port_range_min'] = port_min
         if src_addr:
             new_rule['security_group_rule']['remote_ip_prefix'] = src_addr
         if remote_group:

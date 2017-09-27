@@ -226,16 +226,17 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverUnmanaged):
                         "vTM instance %s failed to boot... Timed out" % (host)
                     )
         except Exception as e:
-            for host in hostnames:
-                try:
-                    services_director.unmanaged_instance.delete(host)
-                except:
-                    pass
-            self.openstack_connector.clean_up(
-                instances=vms,
-                security_groups=security_groups,
-                ports=port_ids
-            )
+            if cfg.CONF.lbaas_settings.roll_back_on_error is True:
+                for host in hostnames:
+                    try:
+                        services_director.unmanaged_instance.delete(host)
+                    except:
+                        pass
+                self.openstack_connector.clean_up(
+                    instances=vms,
+                    security_groups=security_groups,
+                    ports=port_ids
+                )
             raise e
 
     def _destroy_vtm(self, hostnames, lb):

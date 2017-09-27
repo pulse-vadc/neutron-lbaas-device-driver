@@ -75,6 +75,11 @@ lbaas_setting_opts = [
                help=_('LBaaS instance container project')),
     cfg.StrOpt('os_admin_project_id',
                help=_('Keystone ID of admin project')),
+    cfg.BoolOpt('roll_back_on_error', default=True, help=_(
+                'If True, an error during loadbalancer provisioning will '
+                'result in newly-created resources being deleted so as to '
+                'return the system to its previous state. Set to False if '
+                'you wish to leave resources in place for troubleshooting.')),
     cfg.ListOpt('shared_subnets', help=_(
                 'List of Neutron subnet IDs that represent the available '
                 'shared subnets'))
