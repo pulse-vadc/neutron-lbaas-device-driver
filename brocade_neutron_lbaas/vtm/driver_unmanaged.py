@@ -23,7 +23,8 @@ from openstack_connector import OpenStackInterface
 from oslo.config import cfg
 from oslo_log import log as logging
 from services_director import ServicesDirector
-from vtm import vTM
+from vtm_10_4 import vTM as vTM_10_4
+from vtm_17_2 import vTM as vTM_17_2
 from threading import Thread
 from time import sleep, time
 from traceback import format_exc
@@ -453,14 +454,23 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             username = "admin"
             password = cfg.CONF.vtm_settings.admin_password
         for i in xrange(5):
-            vtm = vTM(
-                url, username, password,
-                connectivity_test_url=connectivity_test_url
-            )
             try:
-                if not vtm.test_connectivity():
-                    raise Exception("")
-                return vtm
+                response = requests.get(
+                    connectivity_test_url,
+                    auth=(username, password),
+                    verify=False,
+                    timeout=3
+                )
+                if response.status_code == 200:
+                    return vTM_17_2(
+                        url, username, password,
+                        connectivity_test_url=connectivity_test_url
+                    )
+                elif response.status_code == 404:
+                    return vTM_10_4(
+                        url, username, password,
+                        connectivity_test_url=connectivity_test_url
+                    )
             except:
                 pass
             sleep(i)
