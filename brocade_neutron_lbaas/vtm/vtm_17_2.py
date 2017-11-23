@@ -21,6 +21,8 @@ from abstract_product import ConfigObject, ConfigObjectList, SubList,\
                              ConfigObjectFactory, TextOnlyObjectFactory,\
                              ProductInstance
 import json
+from oslo_log import log as logging
+LOG = logging.getLogger(__name__)
 
 ###############################################################################
 #                           Abstract config object classes                    #

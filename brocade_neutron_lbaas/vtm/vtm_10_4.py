@@ -21,6 +21,8 @@ from abstract_product import ConfigObject, ConfigObjectList, SubList,\
                              ConfigObjectFactory, TextOnlyObjectFactory,\
                              ProductInstance
 import json
+from oslo_log import log as logging
+LOG = logging.getLogger(__name__)
 
 ###############################################################################
 #                           Abstract config object classes                    #
@@ -474,6 +476,9 @@ class vTM(ProductInstance):
     def __init__(self, base_url, username, password, initialize_config=False,
                  connectivity_test_url=None):
         url = "%s/config/active" % base_url
+        self.uuid_test_url = "{}/status/local_tm/information".format(
+            base_url
+        )
         super(vTM, self).__init__(
             url, username, password, vTMConfigObjectList,
             initialize_config, connectivity_test_url
@@ -499,6 +504,18 @@ class vTM(ProductInstance):
             self.security = SecuritySettings("SecuritySettings")
         self.global_settings.connector = global_conn
         self.security.connector = security_conn
+
+    def test_uuid_set(self):
+        try:
+            response = self.http_session.get(
+                self.uuid_test_url, timeout=3
+            )
+        except Exception as e:
+            return False
+        if response.status_code == 200:
+            if response.json()['information']['uuid']:
+                return True
+        return False
 
     def get_nodes_in_cluster(self):
         response = self.http_session.get("%s/traffic_managers" % (

@@ -28,6 +28,7 @@ from vtm_17_2 import vTM as vTM_17_2
 from threading import Thread
 from time import sleep, time
 from traceback import format_exc
+import requests
 
 LOG = logging.getLogger(__name__)
 
@@ -467,6 +468,8 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
                         connectivity_test_url=connectivity_test_url
                     )
                 elif response.status_code == 404:
+                    url = url.replace("4.0", "3.8")
+                    connectivity_test_url = url.replace("4.0", "3.8")
                     return vTM_10_4(
                         url, username, password,
                         connectivity_test_url=connectivity_test_url
@@ -538,11 +541,32 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
             hostname,
             cfg.CONF.vtm_settings.api_version
         )
-        vtm = vTM(
+
+        response = requests.get(
             url,
-            cfg.CONF.services_director_settings.username,
-            cfg.CONF.services_director_settings.password
+            auth=(
+                cfg.CONF.services_director_settings.username,
+                cfg.CONF.services_director_settings.password
+            ),
+            verify=False
         )
+        if response.status_code == 200:
+            vtm = vTM_17_2(
+                url, 
+                cfg.CONF.services_director_settings.username,
+                cfg.CONF.services_director_settings.password
+            )
+        elif response.status_code == 404:
+            url = "%s/instance/%s/tm/3.8" % (
+                services_director.connectivity_test_url,
+                hostname
+            )
+            vtm = vTM_10_4(
+                url, 
+                cfg.CONF.services_director_settings.username,
+                cfg.CONF.services_director_settings.password
+            )
+
         for counter in xrange(15):
             try:
                 if not vtm.test_connectivity():

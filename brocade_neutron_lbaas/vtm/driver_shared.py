@@ -22,7 +22,8 @@ from neutron_lbaas.common.exceptions import LbaasException
 from openstack_connector import OpenStackInterface
 from oslo.config import cfg
 from oslo_log import log as logging
-from vtm import vTM
+from vtm_10_4 import vTM as vTM_10_4
+from vtm_17_2 import vTM as vTM_17_2
 from time import sleep
 from traceback import format_exc
 
@@ -38,7 +39,7 @@ class BrocadeAdxDeviceDriverV2(vTMDeviceDriverCommon):
         self.openstack_connector = OpenStackInterface()
         # Build a list of all vTMs in the cluster
         self.vtms = [
-            vTM(
+            vTM_17_2(
                 "https://%s:%s/api/tm/%s" % (
                     server,
                     cfg.CONF.vtm_settings.rest_port,

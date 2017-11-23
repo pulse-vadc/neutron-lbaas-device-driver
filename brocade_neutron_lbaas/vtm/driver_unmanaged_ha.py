@@ -21,12 +21,14 @@ from neutron_lbaas.common.exceptions import LbaasException
 from oslo.config import cfg
 from oslo_log import log as logging
 from threading import Thread
-from vtm import vTM
+from vtm_10_4 import vTM as vTM_10_4
+from vtm_17_2 import vTM as vTM_17_2
 from driver_unmanaged import BrocadeAdxDeviceDriverV2 \
     as vTMDeviceDriverUnmanaged
 from time import sleep
 from traceback import format_exc
 
+import requests
 LOG = logging.getLogger(__name__)
 
 
@@ -277,12 +279,40 @@ class PollInstance(Thread):
             self.hostname,
             cfg.CONF.vtm_settings.api_version
         )
-        vtm = vTM(
-            url,
-            cfg.CONF.services_director_settings.username,
-            cfg.CONF.services_director_settings.password
-        )
+
         for counter in xrange(100):
+            try:
+                response = requests.get(
+                    url,
+                    auth=(
+                        cfg.CONF.services_director_settings.username,
+                        cfg.CONF.services_director_settings.password
+                    ),
+                    verify=False
+                )
+            except Exception as e:
+                sleep(5)
+                continue
+            if response.status_code == 200:
+                vtm = vTM_17_2(
+                    url,
+                    cfg.CONF.services_director_settings.username,
+                    cfg.CONF.services_director_settings.password
+                )
+            elif response.status_code == 404:
+                url = "%s/instance/%s/tm/3.8" % (
+                    services_director.connectivity_test_url,
+                    hostname
+                )
+                vtm = vTM_10_4(
+                    url,
+                    cfg.CONF.services_director_settings.username,
+                    cfg.CONF.services_director_settings.password
+                )
+            else:
+                sleep(5)
+                continue
+
             try:
                 if not vtm.test_uuid_set():
                     raise self.ConnectivityTestFailedError()
