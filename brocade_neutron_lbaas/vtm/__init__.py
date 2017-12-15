@@ -75,7 +75,7 @@ lbaas_setting_opts = [
                help=_('LBaaS instance container project')),
     cfg.StrOpt('os_admin_project_id',
                help=_('Keystone ID of admin project')),
-    cfg.ListOpt('shared_subnets', help=_(
+    cfg.ListOpt('shared_subnets', default=[], help=_(
                 'List of Neutron subnet IDs that represent the available '
                 'shared subnets'))
 ]
