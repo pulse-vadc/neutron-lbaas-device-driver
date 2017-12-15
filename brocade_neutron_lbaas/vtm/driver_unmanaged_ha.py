@@ -294,6 +294,10 @@ class PollInstance(Thread):
                 break
             except self.ConnectivityTestFailedError:
                 pass
+            except Exception as e:
+                LOG.error(_(
+                    "Unexpected error polling {}: {}".format(self.hostname, e)
+                ))
             sleep(5)
 
     def join(self):
