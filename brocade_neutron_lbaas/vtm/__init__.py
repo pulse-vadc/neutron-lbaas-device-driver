@@ -80,7 +80,7 @@ lbaas_setting_opts = [
                 'result in newly-created resources being deleted so as to '
                 'return the system to its previous state. Set to False if '
                 'you wish to leave resources in place for troubleshooting.')),
-    cfg.ListOpt('shared_subnets', help=_(
+    cfg.ListOpt('shared_subnets', default=[], help=_(
                 'List of Neutron subnet IDs that represent the available '
                 'shared subnets'))
 ]
