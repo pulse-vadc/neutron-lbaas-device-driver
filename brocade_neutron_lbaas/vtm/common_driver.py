@@ -102,22 +102,25 @@ class vTMDeviceDriverCommon(object):
             }
         }}
         vserver_config['properties']['basic'].update(listen_on_settings)
-        # Configure SSL termination...
-        if listener.https_offload == "YES":
-            vserver_config['properties']['basic']['protocol'] = "http"
-            vserver_config['properties']['basic']['ssl_decrypt'] = True
-            vserver_config['properties']['ssl'] = {
-                "server_cert_default": listener.id,
-                "server_cert_host_mapping": []
-            }
-            vtm.ssl_server_cert.create(
-                listener.id,
-                private=listener.https_private_key,
-                public=listener.https_public_key
-            )
-        elif old and old.https_offload == "YES":
-            vserver_config['properties']['basic']['ssl_decrypt'] = False
-            vtm.ssl_server_cert.delete(listener.id)
+        # Configure SSL termination if supported by customized API...
+        try:
+            if listener.https_offload == "YES":
+                vserver_config['properties']['basic']['protocol'] = "http"
+                vserver_config['properties']['basic']['ssl_decrypt'] = True
+                vserver_config['properties']['ssl'] = {
+                    "server_cert_default": listener.id,
+                    "server_cert_host_mapping": []
+                }
+                vtm.ssl_server_cert.create(
+                    listener.id,
+                    private=listener.https_private_key,
+                    public=listener.https_public_key
+                )
+            elif old and old.https_offload == "YES":
+                vserver_config['properties']['basic']['ssl_decrypt'] = False
+                vtm.ssl_server_cert.delete(listener.id)
+        except AttributeError:
+            pass
         # Configure connection limiting...
         if listener.connection_limit > 0:
             vserver_config['properties']['basic']['max_concurrent_connections'] = \
@@ -144,8 +147,11 @@ class vTMDeviceDriverCommon(object):
         # Delete Virtual Server
         vs.delete()
         # Delete associated SSL certificates
-        if listener.https_offload == "YES":
-            vtm.ssl_server_cert.delete(listener.id)
+        try:
+            if listener.https_offload == "YES":
+                vtm.ssl_server_cert.delete(listener.id)
+        except AttributeError:
+            pass
         if use_security_group:
             # Delete security group rule for the listener port/protocol
             identifier = self.openstack_connector.get_identifier(
