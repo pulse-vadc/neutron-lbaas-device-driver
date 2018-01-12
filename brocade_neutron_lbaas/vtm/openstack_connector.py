@@ -364,7 +364,12 @@ class OpenStackInterface(object):
             direction="egress",
             protocol=None
         )
-       
+        # ICMP access
+        self.create_security_group_rule(
+            tenant_id,
+            sec_grp['security_group']['id'],
+            protocol="icmp"
+        )
         # If GUI access is allowed, open up the GUI port
         if cfg.CONF.vtm_settings.gui_access is True and mgmt_label:
             self.create_security_group_rule(
@@ -382,12 +387,7 @@ class OpenStackInterface(object):
                     port=cfg.CONF.vtm_settings.rest_port,
                     src_addr=socket.gethostbyname(server)
                 )
-            # ICMP and SSH access
-            self.create_security_group_rule(
-                tenant_id,
-                sec_grp['security_group']['id'],
-                protocol="icmp"
-            )
+            # SSH access
             self.create_security_group_rule(
                 tenant_id,
                 sec_grp['security_group']['id'],
