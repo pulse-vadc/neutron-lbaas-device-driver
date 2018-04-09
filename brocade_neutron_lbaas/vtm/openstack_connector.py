@@ -903,7 +903,7 @@ class OpenStackInterface(object):
                 if cfg.CONF.vtm_settings.gui_access is True:
                     cluster_join_data['zxtm!unique_bind'] = "n"
                 else:
-                    cluster_join_data['zxtm!unique_bind'] = "n"
+                    cluster_join_data['zxtm!unique_bind'] = "y"
                     cluster_join_data['zxtm!bindip'] = bind_ip
                 cluster_join_text = "\n".join([
                     "%s=%s" % (k, v) for k, v in cluster_join_data.iteritems()
