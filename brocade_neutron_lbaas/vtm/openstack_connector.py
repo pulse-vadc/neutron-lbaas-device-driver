@@ -497,16 +497,15 @@ class OpenStackInterface(object):
                     if loadbalancer['id'] in processed_lbs:
                         continue
                     processed_lbs.append(loadbalancer['id'])
-                    lb = neutron.show_loadbalancer(loadbalancer['id'])
-                    identifier = self.get_identifier(lb['loadbalancer'])
+                    tmp_lb = neutron.show_loadbalancer(loadbalancer['id'])
+                    tmp_lb_id = self.get_identifier(tmp_lb['loadbalancer'])
                     try:
-                        identifier_port_counter[identifier] += 1
+                        identifier_port_counter[tmp_lb_id] += 1
                     except KeyError:
-                        identifier_port_counter[identifier] = 1
-            this_identifier = self.get_identifier(lb['loadbalancer'])
+                        identifier_port_counter[tmp_lb_id] = 1
             # If there is more than one listener on this vTM using the
             # port, exit the function without removing it from sec group
-            if identifier_port_counter[this_identifier] > 1:
+            if identifier_port_counter[identifier] > 1:
                 return False
         # Get the name of the security group for the "loadbalancer"
         sec_grp_name = "lbaas-%s" % identifier
