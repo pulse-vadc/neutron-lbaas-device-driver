@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2014 Brocade Communications Systems, Inc.  All rights reserved.
+# Copyright 2017 Brocade Communications Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
+# Matthew Geldert (mgeldert@pulsesecure.net), Pulse Secure, LLC
 #
 
 from abstract_product import ConfigObject, ConfigObjectList, SubList,\
@@ -216,9 +216,7 @@ class ServicesDirector(ProductInstance):
         "ManagedInstance": {
             "class": ConfigObjectFactory(
                 "ManagedInstance",
-                ["owner", "management_address", "host_name", "stm_version",
-                "admin_password", "bandwidth", "license_name", "cpu_usage",
-                "stm_feature_pack", "container_configuration"],
+                [],
                 ServicesDirectorManagedInstanceObject,
                 {
                     "_is_deletable": False

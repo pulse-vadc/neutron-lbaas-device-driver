@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2014 Brocade Communications Systems, Inc.  All rights reserved.
+# Copyright 2017 Brocade Communications Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -14,30 +14,26 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
+# Matthew Geldert (mgeldert@pulsesecure.net), Pulse Secure, LLC
 #
 
-from oslo.config import cfg
+from oslo_config import cfg
 from oslo_log import log as logging
-from brocade_neutron_lbaas import check_required_settings
 
 LOG = logging.getLogger(__name__)
 
 lbaas_setting_opts = [
-    cfg.ListOpt('admin_ips', default=None,
-                help=_('List of vTM or Services Director IPs')),
-    cfg.ListOpt('admin_servers',
-                help=_('List of admin server (SDs or vTMs) hostnames')),
-    cfg.BoolOpt('allow_different_host_hint', default=False, help=_(
+    cfg.ListOpt('admin_servers', help=_(
+                "List of vTMs in shared cluster (hostnames or IPs)")),
+    cfg.BoolOpt('allow_different_host_hint', default=True, help=_(
                 'Deploy secondary instances on different compute node. '
                 'DO NOT set to True if there is only one compute node '
                 '(e.g. DevStack)')),
-    cfg.StrOpt('availability_zone', default=None, help=_(
-               'AZ to deploy instances into')),
+    cfg.BoolOpt('allow_tenant_customizations', default=False,
+               help=_('Allow certain global settings to be overriden on a '
+               'per-tanant basis')),
     cfg.ListOpt('configuration_source_ips', help=_(
                 'List of IPs from which API calls can be made')),
-    cfg.StrOpt('connection_limit_mode', default="requests_per_sec", help=_(
-               'How to implement the "listener" "connection_limit" option')),
     cfg.BoolOpt('deploy_ha_pairs', default=False, help=_(
                 'If set to True, an HA pair of vTMs will be deployed in '
                 'the PER_TENANT and PER_LOADBALANCER deployment models. '
@@ -45,12 +41,11 @@ lbaas_setting_opts = [
     cfg.StrOpt('deployment_model', help=_(
                'SHARED for a shared pool of vTMs. '
                'PER_TENANT for deploying private vTM instance per tenant. '
-               'PER_LB for deploying private vTM instance per loadbalancer'
+               'PER_LB for deploying private vTM instance per loadbalancer.'
+               'PER_SUBNET for deploying private vTM instance per subnet.'
                )),
     cfg.StrOpt('flavor_id',
                help=_('ID of flavor to use for vTM instance')),
-    cfg.StrOpt('keystone_version', default="3",
-               help=_('Version of Keystone API to use')),
     cfg.BoolOpt('https_offload', default=True,
                 help=_('Enable HTTPS termination')),
     cfg.StrOpt('image_id',
@@ -62,29 +57,48 @@ lbaas_setting_opts = [
     cfg.StrOpt('lbaas_project_username', default="lbaas_admin",
                help=_('Username for LBaaS operations')),
     cfg.StrOpt('management_mode', default='FLOATING_IP',
-               help=_('Whether to use floating IP or dedicated mgmt network')),
+               help=_('Whether to use floating IP (FLOATING_IP) or '
+                      'dedicated mgmt network (MGMT_NET)')),
     cfg.StrOpt('management_network',
                help=_('Neutron ID of network for admin traffic')),
+    cfg.StrOpt('os_admin_password', default="password",
+               help=_('Password of OpenStack admin account')),
+    cfg.StrOpt('os_admin_project_id',
+               help=_('Keystone ID of admin project')),
+    cfg.StrOpt('os_admin_username', default="admin",
+               help=_('LBaaS instance container project')),
     cfg.IntOpt('passive_vtms', default=1,
                help=_('Number of passive vTMs to add to TrafficIP groups')),
     cfg.ListOpt('ports',
                help=_('Neutron port IDs of Stingray traffic-handling ports')),
-    cfg.StrOpt('os_admin_password', default="password",
-               help=_('Password of OpenStack admin account')),
-    cfg.StrOpt('os_admin_username', default="admin",
-               help=_('LBaaS instance container project')),
-    cfg.StrOpt('os_admin_project_id',
-               help=_('Keystone ID of admin project')),
+    cfg.StrOpt('primary_az', help=_('Availability Zone for primary vTM')),
+    cfg.BoolOpt('roll_back_on_error', default=True, help=_(
+                'If True, an error during loadbalancer provisioning will '
+                'result in newly-created resources being deleted so as to '
+                'return the system to its previous state. Set to False if '
+                'you wish to leave resources in place for troubleshooting.')),
+    cfg.StrOpt('secondary_az', help=_('Availability Zone for secondary vTM')),
     cfg.ListOpt('shared_subnets', help=_(
                 'List of Neutron subnet IDs that represent the available '
-                'shared subnets'))
+                'shared subnets')),
+    cfg.BoolOpt('specify_az', default=False, help=_(
+                'If set to true, admin can specify which Availibility Zones '
+                'the primary and secondary vTMs are deployed in.')),
+    cfg.StrOpt('service_endpoint_address',
+               help=_('Service Endpoint Address of Services Director cluster')
+               ),
+    cfg.StrOpt('tenant_customizations_db', help=_(
+               'Database connection string for customizations DB '
+               '(<db_type>://<username>:<password>@<db_host>/<db_name>)'))
 ]
 services_director_setting_opts = [
     cfg.StrOpt('api_version', default="2.0",
                help=_('Version of Services Director REST API to use')),
+    cfg.IntOpt('bandwidth',
+               help=_('Bandwidth allowance for vTM instances')),
     cfg.StrOpt('feature_pack',
                help=_('Feature Pack resource for vTM instances')),
-    cfg.StrOpt('fla_license', default="universal_v3",
+    cfg.StrOpt('fla_license', default="universal_v4",
                help=_('FLA license resource to apply to vTM instances')),
     cfg.StrOpt('password',
                help=_('Password of Services Director admin account')),
@@ -95,13 +109,9 @@ services_director_setting_opts = [
                help=_('Username of Services Director admin account'))
 ]
 vtm_setting_opts = [
-    cfg.StrOpt('admin_password', default=None,
-               help=_('Admin password for all vTM instances (a unique '
-                      'password for each instance will be generated if '
-                      'this is set to None)')),
     cfg.IntOpt('admin_port', default=9090,
                help=_('Port that the vTM admin interface listens on')),
-    cfg.StrOpt('api_version', default="3.8",
+    cfg.StrOpt('api_version', default="4.0",
                help=_('Version of Stingray REST API to use')),
     cfg.IntOpt('cluster_port', default=9080,
                help=_('Port that the vTM cluster healthchecks on')),
@@ -109,9 +119,9 @@ vtm_setting_opts = [
                 help=_('Allow read-only access to the web GUI')),
     cfg.IntOpt('mtu', default=1450,
                help=_('MTU for the vTM instance interfaces')),
-    cfg.ListOpt('nameservers',
+    cfg.ListOpt('nameservers', default=[],
                help=_('List of nameservers for vTM to use')),
-    cfg.StrOpt('password',
+    cfg.StrOpt('password', default=None,
                help=_('Password of vTM admin account')),
     cfg.IntOpt('rest_port', default=9070,
                help=_('TCP port that the vTM REST daemon listens on')),
@@ -121,9 +131,13 @@ vtm_setting_opts = [
                help=_('Community string for SNMP requests')),
     cfg.BoolOpt('snmp_enabled', default=True,
                 help=_('Allow SNMP requests/traps on the management network')),
+    cfg.StrOpt('snmp_port', default=161,
+               help=_('UDP port that the vTM SNMP server listens on')),
     cfg.StrOpt('snmp_traphost',
                help=_('Host to send SNMP traps to')),
-    cfg.StrOpt('timezone', default="Europe/London",
+    cfg.IntOpt('ssh_port', default=22,
+               help=_('TCP port that the vTM SSH server listens on')),
+    cfg.StrOpt('timezone', default="UTC",
                help=_('Timezone to set vTM clock to')),
     cfg.StrOpt('username', default="admin",
                help=_('Username for vTM admin account'))
@@ -133,10 +147,38 @@ cfg.CONF.register_opts(services_director_setting_opts,
                        "services_director_settings")
 cfg.CONF.register_opts(vtm_setting_opts, "vtm_settings")
 
+
+def check_required_settings(required):
+    error_msg = "\n\nThe following settings were not found in the " + \
+                "Pulse vTM LBaaS configuration file:\n\n"
+    key_missing = False
+    for section, required_settings in required.iteritems():
+        section_key_missing = False
+        error_msg += "Missing from section [{}]:\n".format(section)
+        configured_settings = [
+            key for key, value in getattr(cfg.CONF, section).iteritems()
+            if value is not None
+        ]
+        for setting, help_string in required_settings.iteritems():
+            if setting not in configured_settings:
+                error_msg += "{}: {}\n".format(setting, help_string)
+                section_key_missing = True
+                key_missing = True
+        if not section_key_missing:
+            error_msg += "Nothing\n"
+        error_msg += "\n"
+    if key_missing:
+        error_msg += "Please ensure that the Pulse LBaaS configuration " + \
+            "file is being passed to the Neutron server with the " + \
+            "--config-file parameter, and that the file contains values " + \
+            "for the above settings.\n"
+        raise Exception(_(error_msg))
+
+
 if cfg.CONF.lbaas_settings.deployment_model is None:
     raise Exception(_(
         "LBaaS: No value for deployment_model in lbaas_settings. "
-        "Either the value is not in the Brocade LBaaS configuration file "
+        "Either the value is not in the Pulse LBaaS configuration file "
         "or the configuration file was not passed to the neutron server."
     ))
 
@@ -145,7 +187,7 @@ if cfg.CONF.lbaas_settings.deployment_model == "SHARED":
         "lbaas_settings": {
             "admin_servers":
                 "List of vTMs in shared cluster (hostnames or IPs)",
-            "os_admin_password":
+            "openstack_password":
                 "Password of OpenStack admin user",
             "ports":
                 "List of UUIDs of the Neutron ports that connect the "
@@ -156,12 +198,10 @@ if cfg.CONF.lbaas_settings.deployment_model == "SHARED":
             "password": "Password for the vTM cluster admin user"
         }
     })
-    import driver_shared as selected_driver
+    import driver_shared_cluster as selected_driver
 else:
     check_required_settings({
         "lbaas_settings": {
-            "admin_servers":
-                "List of vTMs in shared cluster (hostnames or IPs)",
             "flavor_id":
                 "Nova flavor to use for vTM instances (name or UUID)",
             "image_id":
@@ -171,9 +211,13 @@ else:
                 "network. For FLOATING_IP mode, the Neutron UUID of the "
                 "network on which to raise the floating IPs.",
             "os_admin_password":
-                "Password of OpenStack admin user"
+                "Password of OpenStack admin user",
+            "service_endpoint_address":
+                "Service Endpoint Address of Services Director cluster",
         },
         "services_director_settings": {
+            "bandwidth":
+                "Amount of bandwidth to allocate to each vTM instance",
             "feature_pack":
                 "Name of Services Director feature pack resource to use "
                 "for each vTM",
@@ -186,7 +230,7 @@ else:
         }
     })
     if cfg.CONF.lbaas_settings.deploy_ha_pairs is True:
-        import driver_unmanaged_ha as selected_driver
+        import driver_private_instances_ha as selected_driver
     else:
-        import driver_unmanaged as selected_driver
+        import driver_private_instances as selected_driver
 device_driver = selected_driver

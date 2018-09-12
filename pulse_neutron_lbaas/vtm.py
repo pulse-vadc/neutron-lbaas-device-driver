@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2014 Brocade Communications Systems, Inc.  All rights reserved.
+# Copyright 2017 Brocade Communications Systems, Inc.  All rights reserved.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -14,7 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-# Matthew Geldert (mgeldert@brocade.com), Brocade Communications Systems,Inc.
+# Matthew Geldert (mgeldert@pulsesecure.net), Pulse Secure, LLC
 #
 
 from abstract_product import ConfigObject, ConfigObjectList, SubList,\
@@ -22,6 +22,9 @@ from abstract_product import ConfigObject, ConfigObjectList, SubList,\
                              ProductInstance
 import json
 
+from oslo_log import log as logging
+
+LOG = logging.getLogger(__name__)
 ###############################################################################
 #                           Abstract config object classes                    #
 ###############################################################################
@@ -74,17 +77,6 @@ class vTMConfigObject(ConfigObject):
                 obj_dict['properties']['basic'][field] = value
         return obj_dict
 
-class vTMVirtualServerObject(vTMConfigObject):
-    _url_modifiers = {
-        "PUT": {
-            "type": "querystring", "value": "expert_keys=basic/max_concurrent_connections"
-        },
-        "GET": {
-            "type": "querystring", "value": "expert_keys=basic/max_concurrent_connections"
-        }
-    }
-
-
 
 ###############################################################################
 #                               Object 'list' classes                         #
@@ -131,6 +123,13 @@ class Statistics(object):
             setattr(self, section, self.Section(stats_url, section, connector))
 
     class Section(dict):
+
+        class NoCountersReturnedError(Exception):
+            pass
+
+        class NoDataAvailableError(Exception):
+            pass
+
         def __init__(self, stats_url, section, connector):
             self.stats_url = stats_url
             self.section = section
@@ -141,9 +140,17 @@ class Statistics(object):
                 return self[name]
 
         def __getitem__(self, name):
+            response = self.connector.get(
+                "{}/{}".format(self.stats_url, self.section)
+            )
+            if name not in [obj['name'] for obj in response.json()['children']]:
+                raise self.NoDataAvailableError()
             response = self.connector.get("%s/%s/%s" % (
                 self.stats_url, self.section, name
             ))
+            if (response.status_code == 400
+            and response.json()['error_id'] == "statistics.no_counters"):
+                raise self.NoCountersReturnedError()
             return self.ConfigItem(response.json()['statistics'])
 
         def __getattr__(self, name):
@@ -466,7 +473,7 @@ class vTM(ProductInstance):
             "class": ConfigObjectFactory(
                 "VirtualServer",
                 ["enabled", "protocol", "port", "pool"],
-                vTMVirtualServerObject
+                vTMConfigObject
             ),
             "path": "virtual_servers", "name": "vserver", "plural": "s"}
     }
@@ -474,10 +481,15 @@ class vTM(ProductInstance):
     def __init__(self, base_url, username, password, initialize_config=False,
                  connectivity_test_url=None):
         url = "%s/config/active" % base_url
+        self.uuid_test_url = "{}/status/local_tm/information".format(
+            base_url
+        )
         super(vTM, self).__init__(
             url, username, password, vTMConfigObjectList,
             initialize_config, connectivity_test_url
         )
+        # Status
+        self.status_url = "{}/status/local_tm/state".format(base_url)
         #   Statistics
         # TODO: have object-specific stats available through the object itself
         self.stats_url = "%s/status/local_tm/statistics" % base_url
@@ -499,6 +511,22 @@ class vTM(ProductInstance):
             self.security = SecuritySettings("SecuritySettings")
         self.global_settings.connector = global_conn
         self.security.connector = security_conn
+
+    def get_state(self):
+        response = self.http_session.get(self.status_url)
+        return response.json()['state']
+
+    def test_uuid_set(self):
+        try:
+            response = self.http_session.get(
+                self.uuid_test_url, timeout=3
+            )
+        except Exception as e:
+            return False
+        if response.status_code == 200:
+            if response.json()['information']['uuid']:
+                return True
+        return False
 
     def get_nodes_in_cluster(self):
         response = self.http_session.get("%s/traffic_managers" % (
